@@ -56,11 +56,6 @@ interface VerificationResult {
   approved: boolean;
 }
 
-interface ProcessedVideo {
-  url: string;
-  blob: Blob;
-}
-
 const MARKETS = [
   { code: 'DE', name: 'German', flag: '🇩🇪', voiceId: 'pNInz6obpgDQGcFmaJgB' },
   { code: 'FR', name: 'French', flag: '🇫🇷', voiceId: '21m00Tcm4TlvDq8ikWAM' },
@@ -72,7 +67,7 @@ const MARKETS = [
   { code: 'JA', name: 'Japanese', flag: '🇯🇵', voiceId: 'jsCqWAovK2LkecY7zXl4' },
 ];
 
-type ProcessingStep = 'idle' | 'transcribing' | 'translating' | 'generating-audio' | 'verifying' | 'generating-video' | 'complete' | 'error';
+type ProcessingStep = 'idle' | 'transcribing' | 'translating' | 'generating-audio' | 'verifying' | 'complete' | 'error';
 
 export default function VideoLocaliser() {
   const [uploadedFile, setUploadedFile] = useState<VideoFile | null>(null);
@@ -81,7 +76,6 @@ export default function VideoLocaliser() {
   const [transcript, setTranscript] = useState<Transcript | null>(null);
   const [translation, setTranslation] = useState<Translation | null>(null);
   const [verification, setVerification] = useState<VerificationResult | null>(null);
-  const [processedVideo, setProcessedVideo] = useState<ProcessedVideo | null>(null);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
 
   const [processingStep, setProcessingStep] = useState<ProcessingStep>('idle');
@@ -180,7 +174,6 @@ export default function VideoLocaliser() {
     setTranscript(null);
     setTranslation(null);
     setVerification(null);
-    setProcessedVideo(null);
     setAudioBlob(null);
     setProcessingStep('idle');
     setError(null);
@@ -218,11 +211,8 @@ export default function VideoLocaliser() {
       );
       setVerification(verificationResult);
 
-      // Step 5: Generate Video
-      setProcessingStep('generating-video');
-      const videoResult = await generateVideo(uploadedFile.file, audioResult);
-      setProcessedVideo(videoResult);
-
+      // Step 5: Complete (video generation skipped for Vercel deployment)
+      // For video generation, use a local FFmpeg setup or cloud service
       setProcessingStep('complete');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Processing failed');
@@ -324,37 +314,18 @@ export default function VideoLocaliser() {
     return await response.json();
   };
 
-  const generateVideo = async (videoFile: File, audioBlob: Blob): Promise<ProcessedVideo> => {
-    const formData = new FormData();
-    formData.append('video', videoFile);
-    formData.append('audio', audioBlob, 'audio.mp3');
-
-    const response = await fetch('/api/generate-video', {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error?.message || 'Video generation failed');
-    }
-
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-
-    return { url, blob };
-  };
-
-  const downloadVideo = () => {
-    if (!processedVideo) return;
+  const downloadAudio = () => {
+    if (!audioBlob) return;
+    const url = URL.createObjectURL(audioBlob);
     const a = document.createElement('a');
-    a.href = processedVideo.url;
-    a.download = `localized-${selectedLanguage}-${Date.now()}.mp4`;
+    a.href = url;
+    a.download = `localized-audio-${selectedLanguage}-${Date.now()}.mp3`;
     a.click();
+    URL.revokeObjectURL(url);
   };
 
   const getStepStatus = (step: ProcessingStep) => {
-    const steps: ProcessingStep[] = ['transcribing', 'translating', 'generating-audio', 'verifying', 'generating-video'];
+    const steps: ProcessingStep[] = ['transcribing', 'translating', 'generating-audio', 'verifying'];
     const currentIndex = steps.indexOf(processingStep);
     const stepIndex = steps.indexOf(step);
 
@@ -513,7 +484,6 @@ export default function VideoLocaliser() {
                   { step: 'translating' as ProcessingStep, icon: Languages, label: 'Translating content', data: translation },
                   { step: 'generating-audio' as ProcessingStep, icon: Volume2, label: 'Generating voice', data: audioBlob },
                   { step: 'verifying' as ProcessingStep, icon: CheckCircle2, label: 'Verifying translation', data: verification },
-                  { step: 'generating-video' as ProcessingStep, icon: FileVideo, label: 'Generating final video', data: processedVideo },
                 ].map(({ step, icon: Icon, label, data }) => {
                   const status = getStepStatus(step);
                   return (
@@ -648,14 +618,31 @@ export default function VideoLocaliser() {
           )}
 
           {/* Final Actions */}
-          {processedVideo && processingStep === 'complete' && (
+          {audioBlob && processingStep === 'complete' && (
             <div className="bg-gray-900/50 rounded-xl p-6 border border-gray-800">
-              <h2 className="text-xl font-semibold mb-4">Your Localized Video is Ready!</h2>
+              <h2 className="text-xl font-semibold mb-4">Translation Complete!</h2>
 
-              {/* Video Preview */}
-              <div className="mb-6 bg-black rounded-lg overflow-hidden">
-                <video
-                  src={processedVideo.url}
+              {/* Success Message */}
+              <div className="mb-6 p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
+                <p className="text-green-400 font-medium mb-2">✨ Your translated audio is ready!</p>
+                <p className="text-gray-400 text-sm">
+                  Download the translated audio file below. To create the final video, combine this audio with your original video using:
+                </p>
+                <ul className="list-disc list-inside text-gray-400 text-sm mt-2 ml-2">
+                  <li>Local video editor (Adobe Premiere, Final Cut Pro, DaVinci Resolve)</li>
+                  <li>Cloud service (Cloudinary, Shotstack, Mux)</li>
+                  <li>FFmpeg command line tool</li>
+                </ul>
+              </div>
+
+              {/* Audio Player */}
+              <div className="mb-6 bg-gray-800/50 rounded-lg p-4">
+                <h3 className="text-white font-medium mb-3 flex items-center gap-2">
+                  <Volume2 className="w-5 h-5 text-purple-400" />
+                  Preview Translated Audio
+                </h3>
+                <audio
+                  src={URL.createObjectURL(audioBlob)}
                   controls
                   className="w-full"
                 />
@@ -664,18 +651,18 @@ export default function VideoLocaliser() {
               {/* Actions */}
               <div className="flex gap-4">
                 <button
-                  onClick={downloadVideo}
+                  onClick={downloadAudio}
                   className="flex-1 px-6 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
                 >
                   <Download className="w-5 h-5" />
-                  Download Video
+                  Download Audio ({selectedLanguage})
                 </button>
                 <button
                   onClick={resetProcessing}
                   className="px-6 py-3 bg-gray-800 text-gray-300 rounded-lg font-medium hover:bg-gray-700 transition-colors flex items-center gap-2"
                 >
                   <RefreshCw className="w-5 h-5" />
-                  Process Again
+                  Process Another
                 </button>
               </div>
             </div>
