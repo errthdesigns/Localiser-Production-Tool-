@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { writeFile, unlink } from 'fs/promises';
+import { writeFile, unlink, readFile } from 'fs/promises';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
 
@@ -7,9 +7,9 @@ export const runtime = 'nodejs';
 export const maxDuration = 300; // 5 minutes for video processing
 
 export async function POST(request: NextRequest) {
-  let videoPath: string | null = null;
-  let audioPath: string | null = null;
-  let outputPath: string | null = null;
+  let videoPath: string = '';
+  let audioPath: string = '';
+  let outputPath: string = '';
 
   try {
     const formData = await request.formData();
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     await execPromise(ffmpegCommand);
 
     // Read the output file
-    const outputBuffer = await import('fs/promises').then(fs => fs.readFile(outputPath));
+    const outputBuffer = await readFile(outputPath);
 
     // Clean up temporary files
     await Promise.all([
