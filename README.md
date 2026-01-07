@@ -1,129 +1,235 @@
 # AI Video Localiser
 
-An AI-powered video localization tool for Accenture Song / Henkel that automatically:
-- Transcribes video audio using OpenAI Whisper
-- Translates content to target languages using GPT-4
-- Generates natural-sounding voice with ElevenLabs
-- Verifies translation quality with AI agent
-- Provides translated audio for manual video assembly
+A professional AI-powered video localization tool for Accenture Song / Henkel featuring:
+- **Gemini AI** for comprehensive video analysis and context-aware translation
+- **ElevenLabs** for natural multilingual voice generation
+- **Smart workflow** with quality verification and timing preservation
 
-## Features
+## 🎯 New Workflow
 
-- **AI Transcription**: Automatic speech-to-text with OpenAI Whisper
-- **Smart Translation**: Context-aware translation with GPT-4o
-- **Voice Generation**: Natural multilingual voice with ElevenLabs
-- **Quality Verification**: AI agent checks translation accuracy, fluency, cultural fit, and timing
-- **Audio Download**: Download translated audio for manual video combination
-- **Multi-language Support**: German, French, Spanish, Italian, Dutch, Polish, Portuguese, Japanese
+1. **Upload Video** → System extracts metadata
+2. **Gemini Analyzes** → Scans video for visual context, scenes, and transcription
+3. **Smart Translation** → Context-aware translation with timing preservation
+4. **Voice Generation** → ElevenLabs creates natural-sounding dubbed audio
+5. **Quality Check** → AI verifies accuracy, fluency, and cultural appropriateness
+6. **Download** → Get translated audio ready for video assembly
 
-## Getting Started
+## 🏗️ Architecture
+
+### Service Layer (`/lib/services/`)
+- **`gemini.ts`** - Video analysis, transcription, visual context extraction
+- **`translation.ts`** - Context-aware translation with Gemini
+- **`elevenlabs.ts`** - Voice generation with timing adjustments
+
+### Type System (`/lib/types/`)
+- Comprehensive TypeScript interfaces
+- Type-safe API contracts
+- Shared types across frontend and backend
+
+### API Routes (`/app/api/`)
+- **`/analyze-video`** - Gemini video analysis endpoint
+- **`/process-localization`** - Main orchestration endpoint
+- **`/text-to-speech`** - ElevenLabs voice generation
+- **`/transcribe`** - Legacy OpenAI Whisper support
+
+## 🚀 Getting Started
 
 ### Prerequisites
 
 - Node.js 18+
-- OpenAI API key (for Whisper + GPT-4)
-- ElevenLabs API key (for voice generation)
+- Google Gemini API key ([Get one here](https://aistudio.google.com/app/apikey))
+- ElevenLabs API key ([Get one here](https://elevenlabs.io/app/settings/api-keys))
+- (Optional) OpenAI API key for fallback transcription
 
 ### Installation
 
-1. Clone the repository:
 ```bash
+# Clone the repository
 git clone https://github.com/errthdesigns/Localiser-Production-Tool-.git
 cd Localiser-Production-Tool-
-```
 
-2. Install dependencies:
-```bash
+# Install dependencies
 npm install
-```
 
-3. Set up environment variables:
-```bash
+# Set up environment variables
 cp .env.example .env.local
+# Edit .env.local and add your API keys
 ```
 
-Edit `.env.local` and add your API keys:
+### Environment Variables
+
 ```env
-OPENAI_API_KEY=sk-your-key-here
-ELEVENLABS_API_KEY=your-key-here
+# Required
+GEMINI_API_KEY=your-gemini-api-key-here
+ELEVENLABS_API_KEY=your-elevenlabs-api-key-here
+
+# Optional (for fallback transcription)
+OPENAI_API_KEY=sk-your-openai-api-key-here
 ```
 
-4. Run the development server:
+### Run Development Server
+
 ```bash
 npm run dev
+# Open http://localhost:3000
 ```
 
-5. Open [http://localhost:3000](http://localhost:3000)
+## 📖 Usage
 
-## Usage
+### Quick Start
+1. Upload your master video (MP4, MOV, WebM, AVI)
+2. Select target language
+3. Click "Start Localization"
+4. Review AI quality report
+5. Download translated audio
+6. Combine with video using your preferred editor
 
-1. **Upload Video**: Drag and drop or click to upload your master video
-2. **Select Language**: Choose target language for localization
-3. **Process**: Click "Start Localization" to begin the pipeline
-4. **Review**: Check AI translation quality report with detailed metrics
-5. **Download Audio**: Download the translated audio file
-6. **Combine**: Use your preferred video editor to combine the translated audio with the original video
+### Advanced: Using the Service Layer
 
-## API Routes
+```typescript
+import { GeminiService } from '@/lib/services/gemini';
+import { TranslationService } from '@/lib/services/translation';
+import { ElevenLabsService } from '@/lib/services/elevenlabs';
 
-- `/api/transcribe` - OpenAI Whisper transcription
-- `/api/translate` - GPT-4o translation
-- `/api/text-to-speech` - ElevenLabs voice generation
-- `/api/verify-translation` - AI quality assessment
+// Analyze video
+const gemini = new GeminiService(process.env.GEMINI_API_KEY!);
+const analysis = await gemini.analyzeVideo(videoFile);
 
-## Deploy to Vercel
+// Translate with context
+const translator = new TranslationService(process.env.GEMINI_API_KEY!);
+const translation = await translator.translate(
+  {
+    text: analysis.transcript.map(s => s.text).join(' '),
+    sourceLanguage: 'English',
+    targetLanguage: 'German',
+    preserveTiming: true
+  },
+  analysis
+);
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/errthdesigns/Localiser-Production-Tool-)
+// Generate voice
+const voice = new ElevenLabsService(process.env.ELEVENLABS_API_KEY!);
+const audio = await voice.generateSpeech({
+  text: translation.translatedText,
+  voiceId: 'your-voice-id',
+  language: 'de'
+});
+```
 
-1. Click the deploy button above
-2. Add environment variables:
-   - `OPENAI_API_KEY`
-   - `ELEVENLABS_API_KEY`
-3. Deploy!
+## 🎨 Supported Languages
 
-## Video Assembly
+- 🇩🇪 German
+- 🇫🇷 French
+- 🇪🇸 Spanish
+- 🇮🇹 Italian
+- 🇳🇱 Dutch
+- 🇵🇱 Polish
+- 🇵🇹 Portuguese
+- 🇯🇵 Japanese
 
-After downloading the translated audio, combine it with your original video using:
+## 🔧 Video Assembly
 
-### Option 1: Video Editing Software
-- **Adobe Premiere Pro**: Import video and audio, replace audio track
-- **Final Cut Pro**: Add audio to timeline, remove original audio
-- **DaVinci Resolve**: Replace audio in timeline
-- **iMovie**: Detach audio, replace with translated version
+After downloading translated audio, combine it with your video:
 
-### Option 2: Cloud Services
-- **Cloudinary**: Video transformation API
-- **Shotstack**: Video editing API
-- **Mux**: Video infrastructure platform
+### Option 1: Video Editors
+- **Adobe Premiere Pro** - Replace audio track
+- **Final Cut Pro** - Swap audio in timeline
+- **DaVinci Resolve** - Audio track replacement
+- **iMovie** - Detach and replace audio
 
-### Option 3: FFmpeg Command Line
+### Option 2: FFmpeg CLI
 ```bash
-ffmpeg -i original-video.mp4 -i translated-audio.mp3 -c:v copy -map 0:v:0 -map 1:a:0 -shortest output.mp4
+ffmpeg -i video.mp4 -i audio.mp3 -c:v copy -map 0:v:0 -map 1:a:0 -shortest output.mp4
 ```
 
-## Tech Stack
+### Option 3: Cloud Services
+- **Cloudinary** - Video transformation API
+- **Shotstack** - Video editing API
+- **Mux** - Video infrastructure
+
+## 📊 Features
+
+### 🤖 Gemini AI Video Analysis
+- Scene detection with timestamps
+- Visual context extraction (mood, setting, objects)
+- Speaker detection
+- Audio feature analysis
+- Intelligent transcription
+
+### 🌍 Context-Aware Translation
+- Preserves timing for lip-sync
+- Considers visual context
+- Cultural appropriateness
+- Tone matching
+- Length optimization
+
+### 🎙️ ElevenLabs Voice Generation
+- Natural multilingual voices
+- Timing-adjusted speech
+- Multiple speaker support
+- Emotion preservation
+- High-quality audio output
+
+### ✅ Quality Verification
+- **Accuracy** - Meaning preservation
+- **Fluency** - Natural language flow
+- **Cultural Fit** - Appropriate for target market
+- **Timing** - Suitable for dubbing
+- Auto-approval at 80%+ overall score
+
+## 💰 Cost Estimates
+
+Per 60-second video:
+- Gemini Video Analysis: ~$0.05
+- Gemini Translation: ~$0.01
+- ElevenLabs Voice: ~$0.30
+- Quality Verification: ~$0.01
+- **Total: ~$0.37/minute**
+
+## 🛠️ Tech Stack
 
 - **Framework**: Next.js 14 (App Router)
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS
 - **AI Services**:
-  - OpenAI (Whisper, GPT-4o)
-  - ElevenLabs (Multilingual TTS)
-- **Video Processing**: FFmpeg
+  - Google Gemini 2.0 Flash (video analysis, translation)
+  - ElevenLabs Multilingual V2 (voice generation)
+  - OpenAI Whisper (fallback transcription)
 
-## Costs
+## 📦 Project Structure
 
-Approximate costs per video (30 seconds):
-- Transcription (Whisper): ~$0.003
-- Translation (GPT-4o): ~$0.01
-- Voice Generation (ElevenLabs): ~$0.30
-- Verification (GPT-4o): ~$0.01
-- **Total**: ~$0.34 per 30-second video
+```
+/lib
+  /services       # Service layer for AI integrations
+  /types          # TypeScript type definitions
+  /utils          # Utility functions
+/app
+  /api            # Next.js API routes
+    /analyze-video
+    /process-localization
+    /text-to-speech
+    /transcribe
+  /components     # React components (if needed)
+  page.tsx        # Main UI
+  layout.tsx      # App layout
+```
 
-## License
+## 🚀 Deploy to Vercel
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/errthdesigns/Localiser-Production-Tool-)
+
+1. Click deploy button
+2. Add environment variables:
+   - `GEMINI_API_KEY`
+   - `ELEVENLABS_API_KEY`
+   - `OPENAI_API_KEY` (optional)
+3. Deploy!
+
+## 📝 License
 
 MIT
 
-## Credits
+## 👏 Credits
 
-Built for Henkel × Accenture Song
+Built for **Henkel × Accenture Song**
+Powered by Google Gemini, ElevenLabs, and OpenAI

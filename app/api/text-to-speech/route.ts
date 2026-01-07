@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ElevenLabsService } from '@/lib/services/elevenlabs';
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,7 +12,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { text, voiceId = 'default', modelId = 'eleven_multilingual_v2' } = await request.json();
+    const { text, voiceId = 'default', modelId = 'eleven_multilingual_v2', settings } = await request.json();
 
     if (!text) {
       return NextResponse.json(
@@ -20,35 +21,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Call ElevenLabs text-to-speech API
-    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-      method: 'POST',
-      headers: {
-        'Accept': 'audio/mpeg',
-        'Content-Type': 'application/json',
-        'xi-api-key': apiKey
-      },
-      body: JSON.stringify({
-        text,
-        model_id: modelId,
-        voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.75
-        }
-      })
+    const elevenLabsService = new ElevenLabsService(apiKey);
+
+    const result = await elevenLabsService.generateSpeech({
+      text,
+      voiceId,
+      language: 'auto', // Auto-detect language
+      settings
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('ElevenLabs error:', errorText);
-      return NextResponse.json(
-        { error: { message: `ElevenLabs API error: ${response.statusText}` } },
-        { status: response.status }
-      );
-    }
-
     // Return the audio as a blob
-    const audioBuffer = await response.arrayBuffer();
+    const audioBuffer = await result.audioBlob.arrayBuffer();
 
     return new NextResponse(audioBuffer, {
       headers: {
@@ -78,21 +61,10 @@ export async function GET() {
       );
     }
 
-    const response = await fetch('https://api.elevenlabs.io/v1/voices', {
-      headers: {
-        'xi-api-key': apiKey
-      }
-    });
+    const elevenLabsService = new ElevenLabsService(apiKey);
+    const voices = await elevenLabsService.getVoices();
 
-    if (!response.ok) {
-      return NextResponse.json(
-        { error: { message: 'Failed to fetch voices' } },
-        { status: response.status }
-      );
-    }
-
-    const data = await response.json();
-    return NextResponse.json(data);
+    return NextResponse.json({ voices });
 
   } catch (error) {
     console.error('Error fetching voices:', error);
