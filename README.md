@@ -3,17 +3,17 @@
 An AI-powered video localization tool for Accenture Song / Henkel that automatically:
 - Transcribes video audio using OpenAI Whisper
 - Translates content to target languages using GPT-4
-- Generates natural-sounding voice with ElevenLabs (voice preservation)
+- Generates natural-sounding voice with ElevenLabs
 - Verifies translation quality with AI agent
-- Produces final localized video
+- Provides translated audio for manual video assembly
 
 ## Features
 
 - **AI Transcription**: Automatic speech-to-text with OpenAI Whisper
 - **Smart Translation**: Context-aware translation with GPT-4o
-- **Voice Cloning**: Natural voice generation with ElevenLabs multilingual models
+- **Voice Generation**: Natural multilingual voice with ElevenLabs
 - **Quality Verification**: AI agent checks translation accuracy, fluency, cultural fit, and timing
-- **Video Generation**: Automated video creation with translated audio
+- **Audio Download**: Download translated audio for manual video combination
 - **Multi-language Support**: German, French, Spanish, Italian, Dutch, Polish, Portuguese, Japanese
 
 ## Getting Started
@@ -23,7 +23,6 @@ An AI-powered video localization tool for Accenture Song / Henkel that automatic
 - Node.js 18+
 - OpenAI API key (for Whisper + GPT-4)
 - ElevenLabs API key (for voice generation)
-- FFmpeg (for video processing - auto-installed on Vercel)
 
 ### Installation
 
@@ -61,16 +60,16 @@ npm run dev
 1. **Upload Video**: Drag and drop or click to upload your master video
 2. **Select Language**: Choose target language for localization
 3. **Process**: Click "Start Localization" to begin the pipeline
-4. **Review**: Check AI translation quality report
-5. **Download**: Download the final localized video or re-run if needed
+4. **Review**: Check AI translation quality report with detailed metrics
+5. **Download Audio**: Download the translated audio file
+6. **Combine**: Use your preferred video editor to combine the translated audio with the original video
 
 ## API Routes
 
 - `/api/transcribe` - OpenAI Whisper transcription
-- `/api/translate` - GPT-4 translation
+- `/api/translate` - GPT-4o translation
 - `/api/text-to-speech` - ElevenLabs voice generation
 - `/api/verify-translation` - AI quality assessment
-- `/api/generate-video` - Video production with new audio
 
 ## Deploy to Vercel
 
@@ -82,7 +81,25 @@ npm run dev
    - `ELEVENLABS_API_KEY`
 3. Deploy!
 
-**Note**: For video generation on Vercel, you may need to use an external service or Lambda layer with FFmpeg, as Vercel has limited support for native binaries.
+## Video Assembly
+
+After downloading the translated audio, combine it with your original video using:
+
+### Option 1: Video Editing Software
+- **Adobe Premiere Pro**: Import video and audio, replace audio track
+- **Final Cut Pro**: Add audio to timeline, remove original audio
+- **DaVinci Resolve**: Replace audio in timeline
+- **iMovie**: Detach audio, replace with translated version
+
+### Option 2: Cloud Services
+- **Cloudinary**: Video transformation API
+- **Shotstack**: Video editing API
+- **Mux**: Video infrastructure platform
+
+### Option 3: FFmpeg Command Line
+```bash
+ffmpeg -i original-video.mp4 -i translated-audio.mp3 -c:v copy -map 0:v:0 -map 1:a:0 -shortest output.mp4
+```
 
 ## Tech Stack
 
