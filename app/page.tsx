@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import { upload } from '@vercel/blob/client';
 
 interface VoiceMatch {
   voiceId: string;
@@ -71,20 +72,13 @@ export default function Home() {
       if (fileSizeMB > 4) {
         setProgress('Uploading video (large file)...');
 
-        const uploadFormData = new FormData();
-        uploadFormData.append('video', videoFile);
-
-        const uploadResponse = await fetch('/api/upload-video', {
-          method: 'POST',
-          body: uploadFormData,
+        // Upload directly to Vercel Blob from client
+        const blob = await upload(videoFile.name, videoFile, {
+          access: 'public',
+          handleUploadUrl: '/api/upload-video',
         });
 
-        if (!uploadResponse.ok) {
-          throw new Error('Failed to upload video');
-        }
-
-        const uploadData = await uploadResponse.json();
-        videoUrl = uploadData.url;
+        videoUrl = blob.url;
 
         setProgress('Analyzing video and detecting voice characteristics...');
 

@@ -1,37 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { put } from '@vercel/blob';
+import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  const body = (await request.json()) as HandleUploadBody;
+
   try {
-    const formData = await request.formData();
-    const file = formData.get('video') as File;
-
-    if (!file) {
-      return NextResponse.json(
-        { error: 'No video file provided' },
-        { status: 400 }
-      );
-    }
-
-    // Upload to Vercel Blob Storage
-    const blob = await put(file.name, file, {
-      access: 'public',
-      addRandomSuffix: true,
+    const jsonResponse = await handleUpload({
+      body,
+      request,
+      onBeforeGenerateToken: async () => {
+        return {
+          allowedContentTypes: ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/*'],
+          tokenPayload: JSON.stringify({}),
+        };
+      },
+      onUploadCompleted: async ({ blob }) => {
+        console.log('Upload completed:', blob.url);
+      },
     });
 
-    return NextResponse.json({
-      url: blob.url,
-      filename: file.name,
-      size: file.size,
-    });
+    return NextResponse.json(jsonResponse);
   } catch (error) {
     console.error('Upload error:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Upload failed' },
-      { status: 500 }
+      { status: 400 }
     );
   }
 }
