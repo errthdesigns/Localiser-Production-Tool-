@@ -1,20 +1,5 @@
-import { VoiceCharacteristics } from './gemini';
-import { ElevenLabsService } from './elevenlabs';
-
-export interface VoiceMatch {
-  voiceId: string;
-  name: string;
-  matchScore: number;  // 0-100
-  matchReasons: string[];
-  previewUrl?: string;
-  labels: {
-    accent?: string;
-    description?: string;
-    age?: string;
-    gender?: string;
-    use_case?: string;
-  };
-}
+import { VoiceCharacteristics, VoiceMatch } from '../types';
+import { ElevenLabsService, ElevenLabsVoice } from './elevenlabs';
 
 export class VoiceMatchingService {
   private elevenLabsService: ElevenLabsService;
@@ -23,19 +8,14 @@ export class VoiceMatchingService {
     this.elevenLabsService = new ElevenLabsService(elevenLabsApiKey);
   }
 
-  /**
-   * Find ElevenLabs voices that match the original voice characteristics
-   */
   async findMatchingVoices(
     originalVoice: VoiceCharacteristics,
     targetLanguage: string,
     maxResults: number = 5
   ): Promise<VoiceMatch[]> {
     try {
-      // Get all available voices from ElevenLabs
       const allVoices = await this.elevenLabsService.getVoices();
 
-      // Score each voice based on how well it matches
       const scoredVoices = allVoices.map(voice => {
         const matchScore = this.calculateMatchScore(originalVoice, voice);
         const matchReasons = this.getMatchReasons(originalVoice, voice);
@@ -50,7 +30,6 @@ export class VoiceMatchingService {
         };
       });
 
-      // Sort by match score and return top results
       const topMatches = scoredVoices
         .sort((a, b) => b.matchScore - a.matchScore)
         .slice(0, maxResults);
@@ -58,135 +37,129 @@ export class VoiceMatchingService {
       return topMatches;
     } catch (error) {
       console.error('Voice matching error:', error);
-      throw new Error(`Failed to match voices: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(`Failed to find matching voices: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
-  /**
-   * Calculate match score between original voice and ElevenLabs voice
-   */
-  private calculateMatchScore(
-    original: VoiceCharacteristics,
-    elevenLabsVoice: any
-  ): number {
+  private calculateMatchScore(original: VoiceCharacteristics, voice: ElevenLabsVoice): number {
     let score = 0;
-    const labels = elevenLabsVoice.labels || {};
-    const name = elevenLabsVoice.name?.toLowerCase() || '';
-    const description = (labels.description || '').toLowerCase();
 
-    // Gender matching (30 points)
-    if (labels.gender) {
-      if (labels.gender.toLowerCase() === original.gender) {
-        score += 30;
-      }
-    } else if (name.includes(original.gender)) {
-      score += 20;
+    // Gender match (30 points)
+    if (voice.labels.gender && voice.labels.gender.toLowerCase() === original.gender.toLowerCase()) {
+      score += 30;
     }
 
-    // Age matching (20 points)
-    const ageKeywords = {
-      'young': ['young', 'youthful', 'teen'],
-      'middle-aged': ['middle', 'mature', 'adult'],
-      'mature': ['mature', 'experienced', 'senior'],
-      'elderly': ['elderly', 'old', 'senior', 'wise']
-    };
-
-    const ageWords = ageKeywords[original.ageRange] || [];
-    if (ageWords.some(word => name.includes(word) || description.includes(word))) {
-      score += 20;
+    // Age match (20 points)
+    if (voice.labels.age) {
+      const ageMatch = this.compareAge(original.ageRange, voice.labels.age);
+      score += ageMatch * 20;
     }
 
-    // Accent matching (15 points)
-    if (labels.accent) {
-      if (labels.accent.toLowerCase().includes(original.accent.toLowerCase())) {
-        score += 15;
-      }
-    } else if (description.includes(original.accent.toLowerCase())) {
-      score += 10;
+    // Accent match (15 points)
+    if (voice.labels.accent) {
+      const accentSimilarity = this.compareAccent(original.accent, voice.labels.accent);
+      score += accentSimilarity * 15;
     }
 
-    // Tone matching (20 points)
-    const toneMatches = original.tone.filter(tone =>
-      name.includes(tone.toLowerCase()) || description.includes(tone.toLowerCase())
-    );
-    score += Math.min(20, toneMatches.length * 5);
+    // Tone match (20 points)
+    if (voice.labels.description) {
+      const toneSimilarity = this.compareTone(original.tone, voice.labels.description);
+      score += toneSimilarity * 20;
+    }
 
-    // Emotion matching (15 points)
-    const emotionMatches = original.emotion.filter(emotion =>
-      name.includes(emotion.toLowerCase()) || description.includes(emotion.toLowerCase())
-    );
-    score += Math.min(15, emotionMatches.length * 5);
+    // Emotion match (15 points)
+    if (voice.labels.use_case) {
+      const emotionSimilarity = this.compareEmotion(original.emotion, voice.labels.use_case);
+      score += emotionSimilarity * 15;
+    }
 
     return Math.round(score);
   }
 
-  /**
-   * Get human-readable reasons for the match
-   */
-  private getMatchReasons(
-    original: VoiceCharacteristics,
-    elevenLabsVoice: any
-  ): string[] {
-    const reasons: string[] = [];
-    const labels = elevenLabsVoice.labels || {};
-    const name = elevenLabsVoice.name?.toLowerCase() || '';
-    const description = (labels.description || '').toLowerCase();
-
-    // Gender match
-    if (labels.gender?.toLowerCase() === original.gender) {
-      reasons.push(`Same gender (${original.gender})`);
-    }
-
-    // Age match
-    const ageKeywords = {
-      'young': ['young', 'youthful'],
-      'middle-aged': ['middle', 'mature'],
-      'mature': ['mature', 'experienced'],
-      'elderly': ['elderly', 'senior']
+  private compareAge(originalAge: string, voiceAge: string): number {
+    const ageMap: Record<string, number> = {
+      'young': 1,
+      'middle-aged': 2,
+      'mature': 3,
+      'elderly': 4
     };
-    const ageWords = ageKeywords[original.ageRange] || [];
-    if (ageWords.some(word => name.includes(word) || description.includes(word))) {
-      reasons.push(`Similar age range (${original.ageRange})`);
-    }
 
-    // Accent match
-    if (labels.accent?.toLowerCase().includes(original.accent.toLowerCase())) {
-      reasons.push(`Matching accent (${original.accent})`);
-    }
+    const original = ageMap[originalAge] || 2;
+    const voice = ageMap[voiceAge.toLowerCase()] || 2;
+    const diff = Math.abs(original - voice);
 
-    // Tone matches
-    const toneMatches = original.tone.filter(tone =>
-      name.includes(tone.toLowerCase()) || description.includes(tone.toLowerCase())
-    );
-    if (toneMatches.length > 0) {
-      reasons.push(`Similar tone: ${toneMatches.join(', ')}`);
-    }
-
-    // Emotion matches
-    const emotionMatches = original.emotion.filter(emotion =>
-      name.includes(emotion.toLowerCase()) || description.includes(emotion.toLowerCase())
-    );
-    if (emotionMatches.length > 0) {
-      reasons.push(`Similar emotion: ${emotionMatches.join(', ')}`);
-    }
-
-    // Pitch/pace from description
-    if (original.pitch === 'low' && description.includes('deep')) {
-      reasons.push('Deep/low pitch');
-    } else if (original.pitch === 'high' && (description.includes('bright') || description.includes('light'))) {
-      reasons.push('Bright/high pitch');
-    }
-
-    if (reasons.length === 0) {
-      reasons.push('General voice characteristics match');
-    }
-
-    return reasons;
+    return diff === 0 ? 1 : diff === 1 ? 0.7 : diff === 2 ? 0.4 : 0;
   }
 
-  /**
-   * Get voice recommendations with detailed comparison
-   */
+  private compareAccent(originalAccent: string, voiceAccent: string): number {
+    const original = originalAccent.toLowerCase();
+    const voice = voiceAccent.toLowerCase();
+
+    if (original === voice) return 1;
+    if (original.includes(voice) || voice.includes(original)) return 0.7;
+    if (original.includes('american') && voice.includes('american')) return 0.9;
+    if (original.includes('british') && voice.includes('british')) return 0.9;
+    return 0.3;
+  }
+
+  private compareTone(originalTones: string[], voiceDescription: string): number {
+    const description = voiceDescription.toLowerCase();
+    let matches = 0;
+
+    for (const tone of originalTones) {
+      if (description.includes(tone.toLowerCase())) {
+        matches++;
+      }
+    }
+
+    return originalTones.length > 0 ? matches / originalTones.length : 0;
+  }
+
+  private compareEmotion(originalEmotions: string[], voiceUseCase: string): number {
+    const useCase = voiceUseCase.toLowerCase();
+    let matches = 0;
+
+    for (const emotion of originalEmotions) {
+      if (useCase.includes(emotion.toLowerCase())) {
+        matches++;
+      }
+    }
+
+    return originalEmotions.length > 0 ? matches / originalEmotions.length : 0;
+  }
+
+  private getMatchReasons(original: VoiceCharacteristics, voice: ElevenLabsVoice): string[] {
+    const reasons: string[] = [];
+
+    if (voice.labels.gender && voice.labels.gender.toLowerCase() === original.gender.toLowerCase()) {
+      reasons.push(`Matches ${original.gender} gender`);
+    }
+
+    if (voice.labels.age) {
+      const ageMatch = this.compareAge(original.ageRange, voice.labels.age);
+      if (ageMatch > 0.5) {
+        reasons.push(`Similar age range (${voice.labels.age})`);
+      }
+    }
+
+    if (voice.labels.accent) {
+      const accentSimilarity = this.compareAccent(original.accent, voice.labels.accent);
+      if (accentSimilarity > 0.5) {
+        reasons.push(`Compatible accent (${voice.labels.accent})`);
+      }
+    }
+
+    if (voice.labels.description) {
+      for (const tone of original.tone) {
+        if (voice.labels.description.toLowerCase().includes(tone.toLowerCase())) {
+          reasons.push(`Shares "${tone}" tone`);
+        }
+      }
+    }
+
+    return reasons.length > 0 ? reasons : ['General voice similarity'];
+  }
+
   async getVoiceRecommendations(
     originalVoice: VoiceCharacteristics,
     targetLanguage: string

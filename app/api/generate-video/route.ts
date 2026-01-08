@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { HeyGenService } from '@/lib/services/heygen';
 
 export const runtime = 'nodejs';
-export const maxDuration = 300; // 5 minutes for video processing
+export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,18 +10,18 @@ export async function POST(request: NextRequest) {
 
     if (!heygenApiKey) {
       return NextResponse.json(
-        { error: { message: 'HeyGen API key not configured' } },
+        { error: 'HEYGEN_API_KEY not configured' },
         { status: 500 }
       );
     }
 
     const formData = await request.formData();
-    const videoFile = formData.get('video') as File | null;
-    const audioFile = formData.get('audio') as File | null;
+    const videoFile = formData.get('video') as File;
+    const audioFile = formData.get('audio') as File;
 
     if (!videoFile || !audioFile) {
       return NextResponse.json(
-        { error: { message: 'Missing video or audio file' } },
+        { error: 'Missing video or audio file' },
         { status: 400 }
       );
     }
@@ -33,8 +33,8 @@ export async function POST(request: NextRequest) {
 
     // Generate lip-synced video
     const result = await heygenService.generateLipSyncVideo(videoFile, audioBlob, {
-      maxWaitTime: 300000, // 5 minutes
-      pollInterval: 5000    // Check every 5 seconds
+      maxWaitTime: 300000,
+      pollInterval: 5000
     });
 
     // Return the video as a blob
@@ -48,26 +48,22 @@ export async function POST(request: NextRequest) {
         'X-Video-Id': result.videoId,
       },
     });
-
   } catch (error) {
     console.error('Video generation error:', error);
     return NextResponse.json(
-      { error: { message: error instanceof Error ? error.message : 'Video generation failed' } },
+      { error: error instanceof Error ? error.message : 'Video generation failed' },
       { status: 500 }
     );
   }
 }
 
-/**
- * GET endpoint to check video status
- */
 export async function GET(request: NextRequest) {
   try {
     const heygenApiKey = process.env.HEYGEN_API_KEY;
 
     if (!heygenApiKey) {
       return NextResponse.json(
-        { error: { message: 'HeyGen API key not configured' } },
+        { error: 'HEYGEN_API_KEY not configured' },
         { status: 500 }
       );
     }
@@ -77,7 +73,7 @@ export async function GET(request: NextRequest) {
 
     if (!videoId) {
       return NextResponse.json(
-        { error: { message: 'Missing videoId parameter' } },
+        { error: 'Missing videoId parameter' },
         { status: 400 }
       );
     }
@@ -86,11 +82,10 @@ export async function GET(request: NextRequest) {
     const status = await heygenService.getVideoStatus(videoId);
 
     return NextResponse.json(status);
-
   } catch (error) {
     console.error('Video status check error:', error);
     return NextResponse.json(
-      { error: { message: error instanceof Error ? error.message : 'Status check failed' } },
+      { error: error instanceof Error ? error.message : 'Status check failed' },
       { status: 500 }
     );
   }

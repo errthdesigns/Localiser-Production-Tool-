@@ -1,14 +1,3 @@
-import { VoiceGenerationResult } from '../types';
-
-export interface HeyGenVideoRequest {
-  videoUrl?: string;
-  videoFile?: File;
-  audioUrl?: string;
-  audioBlob?: Blob;
-  text?: string;
-  voiceId?: string;
-}
-
 export interface HeyGenVideoResponse {
   videoId: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
@@ -24,33 +13,11 @@ export class HeyGenService {
     this.apiKey = apiKey;
   }
 
-  /**
-   * Create a video translation job with lip-sync
-   */
-  async createVideoTranslation(request: HeyGenVideoRequest): Promise<HeyGenVideoResponse> {
+  async createVideoTranslation(videoFile: File, audioBlob: Blob): Promise<HeyGenVideoResponse> {
     try {
       const formData = new FormData();
-
-      // Add video
-      if (request.videoFile) {
-        formData.append('video', request.videoFile);
-      } else if (request.videoUrl) {
-        formData.append('video_url', request.videoUrl);
-      } else {
-        throw new Error('Either videoFile or videoUrl is required');
-      }
-
-      // Add audio or text
-      if (request.audioBlob) {
-        formData.append('audio', request.audioBlob, 'audio.mp3');
-      } else if (request.audioUrl) {
-        formData.append('audio_url', request.audioUrl);
-      } else if (request.text && request.voiceId) {
-        formData.append('text', request.text);
-        formData.append('voice_id', request.voiceId);
-      } else {
-        throw new Error('Either audio or text+voiceId is required');
-      }
+      formData.append('video', videoFile);
+      formData.append('audio', audioBlob, 'audio.mp3');
 
       const response = await fetch(`${this.baseUrl}/video/translate`, {
         method: 'POST',
@@ -77,9 +44,6 @@ export class HeyGenService {
     }
   }
 
-  /**
-   * Check the status of a video translation job
-   */
   async getVideoStatus(videoId: string): Promise<HeyGenVideoResponse> {
     try {
       const response = await fetch(`${this.baseUrl}/video/status/${videoId}`, {
@@ -108,13 +72,10 @@ export class HeyGenService {
     }
   }
 
-  /**
-   * Wait for video to complete processing (with polling)
-   */
   async waitForVideoCompletion(
     videoId: string,
-    maxWaitTime: number = 300000, // 5 minutes
-    pollInterval: number = 5000 // 5 seconds
+    maxWaitTime: number = 300000,
+    pollInterval: number = 5000
   ): Promise<HeyGenVideoResponse> {
     const startTime = Date.now();
 
@@ -129,16 +90,12 @@ export class HeyGenService {
         throw new Error(`Video processing failed: ${status.error || 'Unknown error'}`);
       }
 
-      // Wait before next poll
       await new Promise(resolve => setTimeout(resolve, pollInterval));
     }
 
     throw new Error('Video processing timeout - exceeded maximum wait time');
   }
 
-  /**
-   * Download completed video
-   */
   async downloadVideo(videoUrl: string): Promise<Blob> {
     try {
       const response = await fetch(videoUrl);
@@ -154,9 +111,6 @@ export class HeyGenService {
     }
   }
 
-  /**
-   * Full workflow: Create, wait, and download
-   */
   async generateLipSyncVideo(
     videoFile: File,
     audioBlob: Blob,
@@ -166,14 +120,9 @@ export class HeyGenService {
     }
   ): Promise<{ videoId: string; videoBlob: Blob; videoUrl: string }> {
     try {
-      // Step 1: Create video translation job
       console.log('Creating HeyGen video translation job...');
-      const createResult = await this.createVideoTranslation({
-        videoFile,
-        audioBlob,
-      });
+      const createResult = await this.createVideoTranslation(videoFile, audioBlob);
 
-      // Step 2: Wait for completion
       console.log('Waiting for video processing...');
       const completedResult = await this.waitForVideoCompletion(
         createResult.videoId,
@@ -185,7 +134,6 @@ export class HeyGenService {
         throw new Error('Video completed but no URL returned');
       }
 
-      // Step 3: Download video
       console.log('Downloading completed video...');
       const videoBlob = await this.downloadVideo(completedResult.videoUrl);
 
@@ -197,31 +145,6 @@ export class HeyGenService {
     } catch (error) {
       console.error('HeyGen full workflow error:', error);
       throw new Error(`Lip-sync video generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  /**
-   * Get available voices (if HeyGen provides this endpoint)
-   */
-  async getVoices(): Promise<any[]> {
-    try {
-      const response = await fetch(`${this.baseUrl}/voices`, {
-        method: 'GET',
-        headers: {
-          'X-Api-Key': this.apiKey,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch voices: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      return data.voices || data.data?.voices || [];
-    } catch (error) {
-      console.error('Error fetching HeyGen voices:', error);
-      // Return empty array if endpoint doesn't exist
-      return [];
     }
   }
 }

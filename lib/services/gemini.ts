@@ -1,16 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { VideoAnalysis, TranscriptSegment, Scene, VisualContext, AudioFeatures } from '../types';
-
-export interface VoiceCharacteristics {
-  gender: 'male' | 'female' | 'neutral';
-  ageRange: 'young' | 'middle-aged' | 'mature' | 'elderly';
-  tone: string[];  // ['warm', 'authoritative', 'friendly', 'professional', etc.]
-  pace: 'slow' | 'moderate' | 'fast';
-  pitch: 'low' | 'medium' | 'high';
-  accent: string;  // 'American', 'British', 'Australian', etc.
-  emotion: string[];  // ['calm', 'energetic', 'enthusiastic', 'serious']
-  description: string;  // Natural language description
-}
+import { VideoAnalysisResult, VoiceCharacteristics } from '../types';
 
 export class GeminiService {
   private genAI: GoogleGenerativeAI;
@@ -21,187 +10,98 @@ export class GeminiService {
     this.model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
   }
 
-  /**
-   * Analyze video file and extract comprehensive information
-   */
-  async analyzeVideo(videoFile: File): Promise<VideoAnalysis> {
+  async analyzeVideo(videoFile: File): Promise<VideoAnalysisResult> {
     try {
-      // Convert video to base64 for Gemini API
-      const base64Video = await this.fileToBase64(videoFile);
+      const videoBuffer = await videoFile.arrayBuffer();
+      const videoBase64 = Buffer.from(videoBuffer).toString('base64');
 
-      const prompt = `Analyze this video in detail and provide:
-1. Scene breakdown with timestamps
-2. Full transcript with speaker detection
-3. Visual context (setting, mood, objects, colors)
-4. Audio features (language, number of speakers, background music)
+      const prompt = `Analyze this video and provide:
+1. Full transcript with timestamps
+2. Description of key visual scenes
+3. Overall context and mood
+4. Detected language
+5. Estimated duration
 
-Format your response as JSON with this structure:
-{
-  "scenes": [{"startTime": 0, "endTime": 5, "description": "", "objects": [], "actions": [], "setting": ""}],
-  "transcript": [{"startTime": 0, "endTime": 3, "text": "", "speaker": "Speaker 1"}],
-  "visualContext": {"dominantColors": [], "setting": "", "mood": "", "keyObjects": []},
-  "audioFeatures": {"language": "en", "numSpeakers": 1, "backgroundMusic": false, "noiseLevel": "low"}
+Return as JSON: {
+  "transcript": [{"text": "...", "start": 0, "end": 5}],
+  "scenes": ["scene description 1", "scene description 2"],
+  "visualContext": "overall description",
+  "duration": 60,
+  "language": "en"
 }`;
 
       const result = await this.model.generateContent([
         {
           inlineData: {
             mimeType: videoFile.type,
-            data: base64Video
+            data: videoBase64
           }
         },
         { text: prompt }
       ]);
 
-      const response = await result.response;
-      const text = response.text();
+      const response = result.response.text();
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
 
-      // Extract JSON from response (Gemini might wrap it in markdown)
-      const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/\{[\s\S]*\}/);
-      const analysisData = jsonMatch ? JSON.parse(jsonMatch[1] || jsonMatch[0]) : JSON.parse(text);
+      if (!jsonMatch) {
+        throw new Error('Failed to parse Gemini response');
+      }
 
-      return analysisData as VideoAnalysis;
+      return JSON.parse(jsonMatch[0]);
     } catch (error) {
       console.error('Gemini video analysis error:', error);
-      throw new Error(`Failed to analyze video: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(`Video analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
-  /**
-   * Extract and transcribe audio from video
-   */
-  async transcribeVideo(videoFile: File): Promise<TranscriptSegment[]> {
-    try {
-      const base64Video = await this.fileToBase64(videoFile);
-
-      const prompt = `Extract and transcribe all speech from this video. Include timestamps.
-Return as JSON array: [{"startTime": 0, "endTime": 3, "text": "...", "speaker": "Speaker 1", "confidence": 0.95}]`;
-
-      const result = await this.model.generateContent([
-        {
-          inlineData: {
-            mimeType: videoFile.type,
-            data: base64Video
-          }
-        },
-        { text: prompt }
-      ]);
-
-      const response = await result.response;
-      const text = response.text();
-
-      const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/\[[\s\S]*\]/);
-      const transcriptData = jsonMatch ? JSON.parse(jsonMatch[1] || jsonMatch[0]) : JSON.parse(text);
-
-      return transcriptData as TranscriptSegment[];
-    } catch (error) {
-      console.error('Gemini transcription error:', error);
-      throw new Error(`Failed to transcribe: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  /**
-   * Get visual context for better translation
-   */
-  async getVisualContext(videoFile: File, timestamp?: number): Promise<VisualContext> {
-    try {
-      const base64Video = await this.fileToBase64(videoFile);
-
-      const prompt = `Analyze the visual context of this video${timestamp !== undefined ? ` at ${timestamp} seconds` : ''}.
-Describe the setting, mood, dominant colors, and key objects.
-Return as JSON: {"dominantColors": [], "setting": "", "mood": "", "keyObjects": []}`;
-
-      const result = await this.model.generateContent([
-        {
-          inlineData: {
-            mimeType: videoFile.type,
-            data: base64Video
-          }
-        },
-        { text: prompt }
-      ]);
-
-      const response = await result.response;
-      const text = response.text();
-
-      const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/\{[\s\S]*\}/);
-      const contextData = jsonMatch ? JSON.parse(jsonMatch[1] || jsonMatch[0]) : JSON.parse(text);
-
-      return contextData as VisualContext;
-    } catch (error) {
-      console.error('Gemini visual context error:', error);
-      throw new Error(`Failed to get visual context: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  /**
-   * Analyze voice characteristics from video audio
-   */
   async analyzeVoiceCharacteristics(videoFile: File): Promise<VoiceCharacteristics> {
     try {
-      const base64Video = await this.fileToBase64(videoFile);
+      const videoBuffer = await videoFile.arrayBuffer();
+      const videoBase64 = Buffer.from(videoBuffer).toString('base64');
 
-      const prompt = `Analyze the voice characteristics in this video's audio. Provide detailed analysis of:
-
+      const prompt = `Analyze the voice characteristics in this video's audio. Focus on:
 1. Gender (male/female/neutral)
 2. Age range (young/middle-aged/mature/elderly)
-3. Tone qualities (e.g., warm, authoritative, friendly, professional, casual, serious)
+3. Tone qualities (warm, authoritative, friendly, professional, etc.)
 4. Speaking pace (slow/moderate/fast)
 5. Pitch level (low/medium/high)
-6. Accent (e.g., American, British, Australian, neutral)
-7. Emotional qualities (e.g., calm, energetic, enthusiastic, serious, soothing)
-8. Overall voice description in natural language
+6. Accent or regional characteristics
+7. Emotional qualities (calm, energetic, enthusiastic, serious, etc.)
+8. Overall voice description
 
-Return as JSON:
-{
+Return ONLY valid JSON: {
   "gender": "male",
   "ageRange": "middle-aged",
   "tone": ["authoritative", "professional", "warm"],
   "pace": "moderate",
   "pitch": "medium",
-  "accent": "American",
-  "emotion": ["confident", "engaging"],
-  "description": "A confident, professional male voice with warm undertones..."
+  "accent": "neutral American",
+  "emotion": ["confident", "calm"],
+  "description": "A warm, authoritative male voice..."
 }`;
 
       const result = await this.model.generateContent([
         {
           inlineData: {
             mimeType: videoFile.type,
-            data: base64Video
+            data: videoBase64
           }
         },
         { text: prompt }
       ]);
 
-      const response = await result.response;
-      const text = response.text();
+      const response = result.response.text();
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
 
-      const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/\{[\s\S]*\}/);
-      const voiceData = jsonMatch ? JSON.parse(jsonMatch[1] || jsonMatch[0]) : JSON.parse(text);
+      if (!jsonMatch) {
+        throw new Error('Failed to parse voice characteristics');
+      }
 
-      return voiceData as VoiceCharacteristics;
+      return JSON.parse(jsonMatch[0]);
     } catch (error) {
       console.error('Voice analysis error:', error);
-      throw new Error(`Failed to analyze voice: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(`Voice analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  }
-
-  /**
-   * Convert file to base64 string
-   */
-  private async fileToBase64(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64 = reader.result as string;
-        // Remove data URL prefix
-        const base64Data = base64.split(',')[1];
-        resolve(base64Data);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
   }
 }
 

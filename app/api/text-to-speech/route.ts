@@ -1,36 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ElevenLabsService } from '@/lib/services/elevenlabs';
 
+export const runtime = 'nodejs';
+export const maxDuration = 60;
+
 export async function POST(request: NextRequest) {
   try {
-    const apiKey = process.env.ELEVENLABS_API_KEY;
+    const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
 
-    if (!apiKey) {
+    if (!elevenLabsApiKey) {
       return NextResponse.json(
-        { error: { message: 'ElevenLabs API key not configured' } },
+        { error: 'ELEVENLABS_API_KEY not configured' },
         { status: 500 }
       );
     }
 
-    const { text, voiceId = 'default', modelId = 'eleven_multilingual_v2', settings } = await request.json();
+    const body = await request.json();
+    const { text, voiceId, stability, similarityBoost } = body;
 
     if (!text) {
       return NextResponse.json(
-        { error: { message: 'Missing required field: text' } },
+        { error: 'No text provided' },
         { status: 400 }
       );
     }
 
-    const elevenLabsService = new ElevenLabsService(apiKey);
-
-    const result = await elevenLabsService.generateSpeech({
-      text,
-      voiceId,
-      language: 'auto', // Auto-detect language
-      settings
+    const elevenLabsService = new ElevenLabsService(elevenLabsApiKey);
+    const result = await elevenLabsService.generateSpeech(text, voiceId, {
+      stability,
+      similarityBoost
     });
 
-    // Return the audio as a blob
+    // Convert blob to buffer
     const audioBuffer = await result.audioBlob.arrayBuffer();
 
     return new NextResponse(audioBuffer, {
@@ -39,37 +40,10 @@ export async function POST(request: NextRequest) {
         'Content-Length': audioBuffer.byteLength.toString(),
       },
     });
-
   } catch (error) {
     console.error('Text-to-speech error:', error);
     return NextResponse.json(
-      { error: { message: error instanceof Error ? error.message : 'Text-to-speech failed' } },
-      { status: 500 }
-    );
-  }
-}
-
-// GET endpoint to list available voices
-export async function GET() {
-  try {
-    const apiKey = process.env.ELEVENLABS_API_KEY;
-
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: { message: 'ElevenLabs API key not configured' } },
-        { status: 500 }
-      );
-    }
-
-    const elevenLabsService = new ElevenLabsService(apiKey);
-    const voices = await elevenLabsService.getVoices();
-
-    return NextResponse.json({ voices });
-
-  } catch (error) {
-    console.error('Error fetching voices:', error);
-    return NextResponse.json(
-      { error: { message: error instanceof Error ? error.message : 'Failed to fetch voices' } },
+      { error: error instanceof Error ? error.message : 'TTS failed' },
       { status: 500 }
     );
   }
