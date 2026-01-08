@@ -92,6 +92,14 @@ export interface VoiceGenerationResult {
   voiceId: string;
 }
 
+export interface HeyGenVideoResult {
+  videoId: string;
+  videoBlob: Blob;
+  videoUrl: string;
+  status: 'completed' | 'processing' | 'pending' | 'failed';
+  duration?: number;
+}
+
 export interface QualityAssessment {
   accuracy: number;
   fluency: number;
@@ -136,6 +144,7 @@ export type ProcessingStep =
   | 'transcribing'
   | 'translating'
   | 'generating-voice'
+  | 'generating-video'
   | 'verifying'
   | 'finalizing'
   | 'complete'
@@ -149,6 +158,7 @@ export interface LocalizationJob {
   analysis?: VideoAnalysis;
   translation?: TranslationResult;
   voice?: VoiceGenerationResult;
+  video?: HeyGenVideoResult;
   quality?: QualityAssessment;
   createdAt: Date;
   completedAt?: Date;

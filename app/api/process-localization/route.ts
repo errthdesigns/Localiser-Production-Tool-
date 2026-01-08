@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GeminiService } from '@/lib/services/gemini';
 import { TranslationService } from '@/lib/services/translation';
 import { ElevenLabsService } from '@/lib/services/elevenlabs';
+import { HeyGenService } from '@/lib/services/heygen';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300; // 5 minutes for full processing
@@ -20,10 +21,11 @@ export async function POST(request: NextRequest) {
     // Validate API keys
     const geminiApiKey = process.env.GEMINI_API_KEY;
     const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
+    const heygenApiKey = process.env.HEYGEN_API_KEY;
 
-    if (!geminiApiKey || !elevenLabsApiKey) {
+    if (!geminiApiKey || !elevenLabsApiKey || !heygenApiKey) {
       return NextResponse.json(
-        { error: { message: 'Required API keys not configured' } },
+        { error: { message: 'Required API keys not configured (Gemini, ElevenLabs, HeyGen)' } },
         { status: 500 }
       );
     }
@@ -45,6 +47,7 @@ export async function POST(request: NextRequest) {
     const geminiService = new GeminiService(geminiApiKey);
     const translationService = new TranslationService(geminiApiKey);
     const elevenLabsService = new ElevenLabsService(elevenLabsApiKey);
+    const heygenService = new HeyGenService(heygenApiKey);
 
     // Step 1: Analyze video with Gemini
     console.log('Step 1: Analyzing video...');
@@ -86,8 +89,22 @@ export async function POST(request: NextRequest) {
       voiceId
     );
 
-    // Step 5: Verify translation quality
-    console.log('Step 5: Verifying quality...');
+    // Step 5: Generate lip-synced video with HeyGen
+    console.log('Step 5: Generating lip-synced video with HeyGen...');
+    // For now, use the first audio segment (in production, combine all segments)
+    const firstAudioBlob = audioSegments[0].audioBlob;
+
+    const heygenVideo = await heygenService.generateLipSyncVideo(
+      videoFile,
+      firstAudioBlob,
+      {
+        maxWaitTime: 300000, // 5 minutes
+        pollInterval: 5000    // 5 seconds
+      }
+    );
+
+    // Step 6: Verify translation quality
+    console.log('Step 6: Verifying quality...');
     const qualityCheck = await translationService.verifyTranslation(
       fullTranscript,
       translation.translatedText,
@@ -127,6 +144,12 @@ export async function POST(request: NextRequest) {
           segments: audioSegments.length,
           totalDuration: audioSegments.reduce((sum, seg) => sum + seg.duration, 0),
           voiceId
+        },
+        video: {
+          videoId: heygenVideo.videoId,
+          videoUrl: heygenVideo.videoUrl,
+          status: 'completed',
+          message: 'Lip-synced video generated successfully with HeyGen'
         },
         quality: {
           accuracy: qualityCheck.accuracy,
