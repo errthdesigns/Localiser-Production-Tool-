@@ -7,7 +7,8 @@ export class GeminiService {
 
   constructor(apiKey: string) {
     this.genAI = new GoogleGenerativeAI(apiKey);
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    // Using stable Gemini Pro Vision model for video analysis
+    this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
   }
 
   async analyzeVideo(videoFile: File): Promise<VideoAnalysisResult> {
