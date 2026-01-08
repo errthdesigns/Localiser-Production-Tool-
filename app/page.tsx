@@ -91,7 +91,7 @@ export default function Home() {
   };
 
   const generateAudio = async (text: string) => {
-    setProgress('Generating translated speech...');
+    setProgress('Generating translated speech with AI voice...');
 
     const response = await fetch('/api/text-to-speech', {
       method: 'POST',
@@ -148,9 +148,9 @@ export default function Home() {
       const audioBlob = await generateAudio(sampleText);
       setGeneratedAudio(audioBlob);
 
-      // Step 2: Generate video
-      const videoBlob = await generateVideo(audioBlob);
-      setGeneratedVideo(videoBlob);
+      // Step 2: Generate video (DISABLED FOR DEMO - requires VEED_API_KEY)
+      // const videoBlob = await generateVideo(audioBlob);
+      // setGeneratedVideo(videoBlob);
 
       setStep('complete');
     } catch (err) {
@@ -344,7 +344,7 @@ export default function Home() {
                 disabled={!selectedVoiceId || isLoading}
                 className="flex-1 bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition"
               >
-                Generate Localized Video
+                Generate Localized Audio
               </button>
             </div>
           </div>
@@ -383,7 +383,7 @@ export default function Home() {
                 </div>
               )}
 
-              {generatedVideo && (
+              {generatedVideo ? (
                 <div className="border border-gray-200 rounded-lg p-4">
                   <h3 className="font-semibold mb-2">Lip-Synced Video</h3>
                   <video controls className="w-full rounded mb-2">
@@ -396,6 +396,13 @@ export default function Home() {
                   >
                     Download Video
                   </a>
+                </div>
+              ) : (
+                <div className="border border-blue-200 bg-blue-50 rounded-lg p-4">
+                  <h3 className="font-semibold mb-2 text-blue-900">📹 Video Lip-Sync (Coming Soon)</h3>
+                  <p className="text-sm text-blue-700">
+                    AI-powered lip-sync video generation will be available once you add your VEED_API_KEY to the environment variables.
+                  </p>
                 </div>
               )}
             </div>
