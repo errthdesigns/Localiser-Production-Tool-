@@ -1,112 +1,274 @@
-# AI Video Localiser
+# AI Video Localiser with Automatic Lip-Sync
 
-An AI-powered video localization tool for Accenture Song / Henkel that automatically:
-- Transcribes video audio using OpenAI Whisper
-- Translates content to target languages using GPT-4
-- Generates natural-sounding voice with ElevenLabs (voice preservation)
-- Verifies translation quality with AI agent
-- Produces final localized video
+Professional AI-powered video localization tool for Accenture Song / Henkel featuring:
+- **Gemini AI** for video analysis and context-aware translation
+- **ElevenLabs** for natural multilingual voice generation
+- **HeyGen** for automatic AI lip-sync video generation
+- End-to-end workflow with zero manual editing required
 
-## Features
+## 🎯 Complete Workflow
 
-- **AI Transcription**: Automatic speech-to-text with OpenAI Whisper
-- **Smart Translation**: Context-aware translation with GPT-4o
-- **Voice Cloning**: Natural voice generation with ElevenLabs multilingual models
-- **Quality Verification**: AI agent checks translation accuracy, fluency, cultural fit, and timing
-- **Video Generation**: Automated video creation with translated audio
-- **Multi-language Support**: German, French, Spanish, Italian, Dutch, Polish, Portuguese, Japanese
+1. **Upload Video** → Extract metadata and prepare for analysis
+2. **Gemini Analyzes** → Comprehensive video scanning:
+   - Visual context (scenes, objects, mood, setting)
+   - Full transcription with speaker detection
+   - Audio features and language detection
+3. **Context-Aware Translation** → Gemini translates with:
+   - Visual scene context
+   - Cultural appropriateness
+   - Timing preservation for lip-sync
+   - Mood and tone matching
+4. **Voice Generation** → ElevenLabs creates:
+   - Natural-sounding multilingual voice
+   - Timing-adjusted speech
+   - Emotion preservation
+5. **Automatic Lip-Sync** → HeyGen generates:
+   - AI-powered lip-synced video
+   - Perfect mouth movements
+   - Natural facial expressions
+6. **Quality Verification** → AI assesses:
+   - Translation accuracy
+   - Cultural appropriateness
+   - Timing suitability
+   - Overall quality score
+7. **Download** → Complete localized video with lip-sync!
 
-## Getting Started
+## ⚡ Key Advantage
+
+**Zero manual editing required!** The entire process is automated from upload to lip-synced video download.
+
+## 🏗️ Architecture
+
+### Service Layer (`/lib/services/`)
+- **`gemini.ts`** - Video analysis, transcription, visual context
+- **`translation.ts`** - Context-aware translation with Gemini
+- **`elevenlabs.ts`** - Natural voice generation with timing
+- **`heygen.ts`** - AI lip-sync video generation
+
+### API Routes (`/app/api/`)
+- **`/analyze-video`** - Gemini video analysis
+- **`/process-localization`** - Full workflow orchestration
+- **`/text-to-speech`** - ElevenLabs voice generation
+- **`/generate-video`** - HeyGen lip-sync generation
+- **`/transcribe`** - Legacy OpenAI Whisper support
+
+## 🚀 Quick Start
 
 ### Prerequisites
 
 - Node.js 18+
-- OpenAI API key (for Whisper + GPT-4)
-- ElevenLabs API key (for voice generation)
-- FFmpeg (for video processing - auto-installed on Vercel)
+- **Gemini API key** ([Get here](https://aistudio.google.com/app/apikey))
+- **ElevenLabs API key** ([Get here](https://elevenlabs.io/app/settings/api-keys))
+- **HeyGen API key** ([Get here](https://app.heygen.com/settings/api))
 
 ### Installation
 
-1. Clone the repository:
 ```bash
 git clone https://github.com/errthdesigns/Localiser-Production-Tool-.git
 cd Localiser-Production-Tool-
-```
 
-2. Install dependencies:
-```bash
 npm install
-```
 
-3. Set up environment variables:
-```bash
 cp .env.example .env.local
+# Edit .env.local and add your API keys
 ```
 
-Edit `.env.local` and add your API keys:
+### Environment Variables
+
 ```env
-OPENAI_API_KEY=sk-your-key-here
-ELEVENLABS_API_KEY=your-key-here
+GEMINI_API_KEY=your-gemini-api-key-here        # Required
+ELEVENLABS_API_KEY=your-elevenlabs-api-key-here  # Required
+HEYGEN_API_KEY=your-heygen-api-key-here        # Required
+OPENAI_API_KEY=sk-...                          # Optional
 ```
 
-4. Run the development server:
+### Run
+
 ```bash
 npm run dev
+# Open http://localhost:3000
 ```
 
-5. Open [http://localhost:3000](http://localhost:3000)
+## 📖 Usage
 
-## Usage
+### Simple Workflow
+1. Upload your master video (MP4, MOV, WebM)
+2. Select target language
+3. Click "Start Localization"
+4. Wait for processing (~2-5 minutes)
+5. Review quality report
+6. Download complete lip-synced video!
 
-1. **Upload Video**: Drag and drop or click to upload your master video
-2. **Select Language**: Choose target language for localization
-3. **Process**: Click "Start Localization" to begin the pipeline
-4. **Review**: Check AI translation quality report
-5. **Download**: Download the final localized video or re-run if needed
+### Advanced: Programmatic Usage
 
-## API Routes
+```typescript
+import { GeminiService } from '@/lib/services/gemini';
+import { TranslationService } from '@/lib/services/translation';
+import { ElevenLabsService } from '@/lib/services/elevenlabs';
+import { HeyGenService } from '@/lib/services/heygen';
 
-- `/api/transcribe` - OpenAI Whisper transcription
-- `/api/translate` - GPT-4 translation
-- `/api/text-to-speech` - ElevenLabs voice generation
-- `/api/verify-translation` - AI quality assessment
-- `/api/generate-video` - Video production with new audio
+// Analyze video
+const gemini = new GeminiService(process.env.GEMINI_API_KEY!);
+const analysis = await gemini.analyzeVideo(videoFile);
 
-## Deploy to Vercel
+// Translate with context
+const translator = new TranslationService(process.env.GEMINI_API_KEY!);
+const translation = await translator.translate({
+  text: analysis.transcript.map(s => s.text).join(' '),
+  sourceLanguage: analysis.audioFeatures.language,
+  targetLanguage: 'German',
+  preserveTiming: true
+}, analysis);
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/errthdesigns/Localiser-Production-Tool-)
+// Generate voice
+const voice = new ElevenLabsService(process.env.ELEVENLABS_API_KEY!);
+const audio = await voice.generateSpeech({
+  text: translation.translatedText,
+  voiceId: 'your-voice-id',
+  language: 'de'
+});
 
-1. Click the deploy button above
-2. Add environment variables:
-   - `OPENAI_API_KEY`
-   - `ELEVENLABS_API_KEY`
-3. Deploy!
+// Create lip-synced video
+const heygen = new HeyGenService(process.env.HEYGEN_API_KEY!);
+const video = await heygen.generateLipSyncVideo(videoFile, audio.audioBlob);
+```
 
-**Note**: For video generation on Vercel, you may need to use an external service or Lambda layer with FFmpeg, as Vercel has limited support for native binaries.
+## 🎨 Supported Languages
 
-## Tech Stack
+- 🇩🇪 German
+- 🇫🇷 French
+- 🇪🇸 Spanish
+- 🇮🇹 Italian
+- 🇳🇱 Dutch
+- 🇵🇱 Polish
+- 🇵🇹 Portuguese
+- 🇯🇵 Japanese
+- And more (ElevenLabs + HeyGen support 40+ languages)
+
+## 🔥 Features
+
+### 🤖 Gemini AI Video Analysis
+- Full scene detection with timestamps
+- Visual context extraction (mood, setting, objects, colors)
+- Speaker detection and tracking
+- Audio feature analysis
+- Intelligent transcription
+
+### 🌍 Context-Aware Translation
+- Visual scene context considered
+- Timing preservation for perfect lip-sync
+- Cultural appropriateness checks
+- Tone and emotion matching
+- Length optimization
+
+### 🎙️ ElevenLabs Voice Generation
+- Natural multilingual voices
+- Timing-adjusted speech rates
+- Multiple speaker support
+- Emotion and tone preservation
+- Professional audio quality
+
+### 🎬 HeyGen AI Lip-Sync
+- **Automatic lip-sync** - No manual editing needed!
+- Natural mouth movements
+- Facial expression preservation
+- High-quality video output
+- Fast processing (2-5 minutes)
+
+### ✅ Quality Verification
+- **Accuracy** (0-100) - Translation correctness
+- **Fluency** (0-100) - Natural language flow
+- **Cultural Fit** (0-100) - Market appropriateness
+- **Timing** (0-100) - Lip-sync suitability
+- Auto-approval at 80%+ score
+
+## 💰 Cost Breakdown
+
+Per 60-second video:
+- Gemini Video Analysis: ~$0.05
+- Gemini Translation: ~$0.01
+- ElevenLabs Voice: ~$0.30
+- HeyGen Lip-Sync: ~$0.50
+- Quality Verification: ~$0.01
+- **Total: ~$0.87/minute**
+
+## 🛠️ Tech Stack
 
 - **Framework**: Next.js 14 (App Router)
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS
 - **AI Services**:
-  - OpenAI (Whisper, GPT-4o)
-  - ElevenLabs (Multilingual TTS)
-- **Video Processing**: FFmpeg
+  - Google Gemini 2.0 Flash (video analysis, translation)
+  - ElevenLabs Multilingual V2 (voice generation)
+  - HeyGen API (AI lip-sync video generation)
 
-## Costs
+## 📦 Project Structure
 
-Approximate costs per video (30 seconds):
-- Transcription (Whisper): ~$0.003
-- Translation (GPT-4o): ~$0.01
-- Voice Generation (ElevenLabs): ~$0.30
-- Verification (GPT-4o): ~$0.01
-- **Total**: ~$0.34 per 30-second video
+```
+/lib
+  /services       # AI service integrations
+    gemini.ts     # Video analysis & translation
+    translation.ts # Context-aware translation
+    elevenlabs.ts # Voice generation
+    heygen.ts     # Lip-sync video generation
+  /types          # TypeScript definitions
+  /utils          # Utility functions
 
-## License
+/app
+  /api            # Next.js API routes
+    /analyze-video
+    /process-localization # Main orchestration
+    /text-to-speech
+    /generate-video       # HeyGen lip-sync
+  page.tsx        # Main UI
+```
+
+## 🚀 Deploy to Vercel
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/errthdesigns/Localiser-Production-Tool-)
+
+1. Click deploy button
+2. Add environment variables:
+   - `GEMINI_API_KEY`
+   - `ELEVENLABS_API_KEY`
+   - `HEYGEN_API_KEY`
+3. Deploy!
+
+## 🎓 How It Works
+
+### Video Analysis (Gemini)
+Gemini's multimodal capabilities analyze both visual and audio:
+- Understands what's happening in each scene
+- Detects mood, setting, objects, actions
+- Transcribes speech with speaker detection
+- Provides rich context for translation
+
+### Context-Aware Translation (Gemini)
+Translation considers the full context:
+- Visual scene information
+- Cultural nuances
+- Timing requirements for lip-sync
+- Emotional tone matching
+
+### Voice Generation (ElevenLabs)
+High-quality voice synthesis:
+- Natural-sounding speech in 40+ languages
+- Emotion and tone preservation
+- Timing adjustments for lip-sync
+- Professional audio quality
+
+### Automatic Lip-Sync (HeyGen)
+AI-powered lip-sync generation:
+- Analyzes facial movements in original video
+- Generates new mouth movements for translated audio
+- Maintains facial expressions and emotions
+- Outputs polished, production-ready video
+
+## 📝 License
 
 MIT
 
-## Credits
+## 👏 Credits
 
-Built for Henkel × Accenture Song
+Built for **Henkel × Accenture Song**
+Powered by Google Gemini, ElevenLabs, and HeyGen
