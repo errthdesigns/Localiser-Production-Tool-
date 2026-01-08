@@ -1,6 +1,17 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { VideoAnalysis, TranscriptSegment, Scene, VisualContext, AudioFeatures } from '../types';
 
+export interface VoiceCharacteristics {
+  gender: 'male' | 'female' | 'neutral';
+  ageRange: 'young' | 'middle-aged' | 'mature' | 'elderly';
+  tone: string[];  // ['warm', 'authoritative', 'friendly', 'professional', etc.]
+  pace: 'slow' | 'moderate' | 'fast';
+  pitch: 'low' | 'medium' | 'high';
+  accent: string;  // 'American', 'British', 'Australian', etc.
+  emotion: string[];  // ['calm', 'energetic', 'enthusiastic', 'serious']
+  description: string;  // Natural language description
+}
+
 export class GeminiService {
   private genAI: GoogleGenerativeAI;
   private model: any;
@@ -120,6 +131,59 @@ Return as JSON: {"dominantColors": [], "setting": "", "mood": "", "keyObjects": 
     } catch (error) {
       console.error('Gemini visual context error:', error);
       throw new Error(`Failed to get visual context: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Analyze voice characteristics from video audio
+   */
+  async analyzeVoiceCharacteristics(videoFile: File): Promise<VoiceCharacteristics> {
+    try {
+      const base64Video = await this.fileToBase64(videoFile);
+
+      const prompt = `Analyze the voice characteristics in this video's audio. Provide detailed analysis of:
+
+1. Gender (male/female/neutral)
+2. Age range (young/middle-aged/mature/elderly)
+3. Tone qualities (e.g., warm, authoritative, friendly, professional, casual, serious)
+4. Speaking pace (slow/moderate/fast)
+5. Pitch level (low/medium/high)
+6. Accent (e.g., American, British, Australian, neutral)
+7. Emotional qualities (e.g., calm, energetic, enthusiastic, serious, soothing)
+8. Overall voice description in natural language
+
+Return as JSON:
+{
+  "gender": "male",
+  "ageRange": "middle-aged",
+  "tone": ["authoritative", "professional", "warm"],
+  "pace": "moderate",
+  "pitch": "medium",
+  "accent": "American",
+  "emotion": ["confident", "engaging"],
+  "description": "A confident, professional male voice with warm undertones..."
+}`;
+
+      const result = await this.model.generateContent([
+        {
+          inlineData: {
+            mimeType: videoFile.type,
+            data: base64Video
+          }
+        },
+        { text: prompt }
+      ]);
+
+      const response = await result.response;
+      const text = response.text();
+
+      const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/\{[\s\S]*\}/);
+      const voiceData = jsonMatch ? JSON.parse(jsonMatch[1] || jsonMatch[0]) : JSON.parse(text);
+
+      return voiceData as VoiceCharacteristics;
+    } catch (error) {
+      console.error('Voice analysis error:', error);
+      throw new Error(`Failed to analyze voice: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 

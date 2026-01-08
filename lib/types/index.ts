@@ -1,5 +1,31 @@
 // Core types for video localization workflow
 
+export interface VoiceCharacteristics {
+  gender: 'male' | 'female' | 'neutral';
+  ageRange: 'young' | 'middle-aged' | 'mature' | 'elderly';
+  tone: string[];
+  pace: 'slow' | 'moderate' | 'fast';
+  pitch: 'low' | 'medium' | 'high';
+  accent: string;
+  emotion: string[];
+  description: string;
+}
+
+export interface VoiceMatch {
+  voiceId: string;
+  name: string;
+  matchScore: number;
+  matchReasons: string[];
+  previewUrl?: string;
+  labels: {
+    accent?: string;
+    description?: string;
+    age?: string;
+    gender?: string;
+    use_case?: string;
+  };
+}
+
 export interface VideoMetadata {
   duration: number;
   width: number;
