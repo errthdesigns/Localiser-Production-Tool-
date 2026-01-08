@@ -69,7 +69,7 @@ export class ElevenLabsService {
   /**
    * Get available voices for a language
    */
-  async getVoices(): Promise<Array<{ voice_id: string; name: string; labels: any }>> {
+  async getVoices(): Promise<Array<{ voice_id: string; name: string; labels: any; preview_url?: string }>> {
     try {
       const response = await fetch(`${this.baseUrl}/voices`, {
         headers: {

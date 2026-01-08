@@ -197,7 +197,7 @@ export class VoiceMatchingService {
   }> {
     const matches = await this.findMatchingVoices(originalVoice, targetLanguage, 5);
 
-    const summary = `Based on the original voice (${original Voice.gender}, ${originalVoice.ageRange}, ${originalVoice.tone.join(', ')}), we found ${matches.length} similar voices. The top match has a ${matches[0]?.matchScore}% similarity score.`;
+    const summary = `Based on the original voice (${originalVoice.gender}, ${originalVoice.ageRange}, ${originalVoice.tone.join(', ')}), we found ${matches.length} similar voices. The top match has a ${matches[0]?.matchScore}% similarity score.`;
 
     return {
       originalCharacteristics: originalVoice,
