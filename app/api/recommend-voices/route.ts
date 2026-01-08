@@ -17,15 +17,42 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const formData = await request.formData();
-    const videoFile = formData.get('video') as File;
-    const targetLanguage = (formData.get('targetLanguage') as string) || 'en';
+    // Check if we're receiving JSON (with video URL) or FormData (with file)
+    const contentType = request.headers.get('content-type');
 
-    if (!videoFile) {
-      return NextResponse.json(
-        { error: 'No video file provided' },
-        { status: 400 }
-      );
+    let videoFile: File | null = null;
+    let videoUrl: string | null = null;
+    let targetLanguage = 'en';
+
+    if (contentType?.includes('application/json')) {
+      // Receiving video URL from Blob storage
+      const body = await request.json();
+      videoUrl = body.videoUrl;
+      targetLanguage = body.targetLanguage || 'en';
+
+      if (!videoUrl) {
+        return NextResponse.json(
+          { error: 'No video URL provided' },
+          { status: 400 }
+        );
+      }
+
+      // Download video from URL
+      const response = await fetch(videoUrl);
+      const videoBlob = await response.blob();
+      videoFile = new File([videoBlob], 'video.mp4', { type: videoBlob.type });
+    } else {
+      // Receiving direct file upload (for smaller files)
+      const formData = await request.formData();
+      videoFile = formData.get('video') as File;
+      targetLanguage = (formData.get('targetLanguage') as string) || 'en';
+
+      if (!videoFile) {
+        return NextResponse.json(
+          { error: 'No video file provided' },
+          { status: 400 }
+        );
+      }
     }
 
     // Analyze voice characteristics
