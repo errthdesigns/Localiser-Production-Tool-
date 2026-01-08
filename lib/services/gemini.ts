@@ -103,20 +103,37 @@ Return ONLY valid JSON: {
   "description": "A warm, authoritative male voice..."
 }`;
 
-      console.log('Calling Gemini API...');
-      const result = await this.model.generateContent([
-        {
-          inlineData: {
-            mimeType: mimeType,
-            data: videoBase64
-          }
-        },
-        { text: prompt }
-      ]);
+      console.log('Calling Gemini API with prompt...');
+      console.log('Prompt length:', prompt.length);
 
-      console.log('Gemini API call successful');
+      let result;
+      try {
+        result = await this.model.generateContent([
+          {
+            inlineData: {
+              mimeType: mimeType,
+              data: videoBase64
+            }
+          },
+          { text: prompt }
+        ]);
+        console.log('Gemini API call completed');
+      } catch (apiError) {
+        console.error('Gemini API call failed:', apiError);
+        // Extract more specific error information
+        if (apiError instanceof Error) {
+          console.error('API Error details:', {
+            name: apiError.name,
+            message: apiError.message,
+            stack: apiError.stack
+          });
+        }
+        throw apiError;
+      }
+
+      console.log('Getting response text...');
       const response = result.response.text();
-      console.log('Raw Gemini response:', response.substring(0, 200));
+      console.log('Raw Gemini response (first 200 chars):', response.substring(0, 200));
 
       const jsonMatch = response.match(/\{[\s\S]*\}/);
 
