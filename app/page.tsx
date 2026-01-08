@@ -62,26 +62,72 @@ export default function Home() {
 
     setIsLoading(true);
     setError('');
-    setProgress('Analyzing video and detecting voice characteristics...');
 
     try {
-      const formData = new FormData();
-      formData.append('video', videoFile);
-      formData.append('targetLanguage', targetLanguage);
+      const fileSizeMB = videoFile.size / 1024 / 1024;
+      let videoUrl: string | null = null;
 
-      const response = await fetch('/api/recommend-voices', {
-        method: 'POST',
-        body: formData,
-      });
+      // If file is larger than 4MB, upload to Blob storage first
+      if (fileSizeMB > 4) {
+        setProgress('Uploading video (large file)...');
 
-      if (!response.ok) {
-        throw new Error('Failed to analyze voice');
+        const uploadFormData = new FormData();
+        uploadFormData.append('video', videoFile);
+
+        const uploadResponse = await fetch('/api/upload-video', {
+          method: 'POST',
+          body: uploadFormData,
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error('Failed to upload video');
+        }
+
+        const uploadData = await uploadResponse.json();
+        videoUrl = uploadData.url;
+
+        setProgress('Analyzing video and detecting voice characteristics...');
+
+        // Use JSON with video URL
+        const response = await fetch('/api/recommend-voices', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            videoUrl,
+            targetLanguage,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to analyze voice');
+        }
+
+        const data = await response.json();
+        setVoiceRecommendations(data);
+        setSelectedVoiceId(data.recommendedVoices[0]?.voiceId || '');
+        setStep('voice-selection');
+      } else {
+        // For smaller files, upload directly
+        setProgress('Analyzing video and detecting voice characteristics...');
+
+        const formData = new FormData();
+        formData.append('video', videoFile);
+        formData.append('targetLanguage', targetLanguage);
+
+        const response = await fetch('/api/recommend-voices', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to analyze voice');
+        }
+
+        const data = await response.json();
+        setVoiceRecommendations(data);
+        setSelectedVoiceId(data.recommendedVoices[0]?.voiceId || '');
+        setStep('voice-selection');
       }
-
-      const data = await response.json();
-      setVoiceRecommendations(data);
-      setSelectedVoiceId(data.recommendedVoices[0]?.voiceId || '');
-      setStep('voice-selection');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Voice analysis failed');
     } finally {
