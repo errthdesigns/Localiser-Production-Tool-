@@ -67,12 +67,16 @@ export default function Home() {
     try {
       const fileSizeMB = videoFile.size / 1024 / 1024;
 
-      // Check file size and warn if too large
-      if (fileSizeMB > 4) {
-        setError('Video file is too large (max 4MB for demo). Please use a shorter or compressed video.');
+      // Warn about large files but allow them to try
+      if (fileSizeMB > 15) {
+        setError('Video file is very large (over 15MB). This may fail due to upload limits. Try a shorter or compressed video if you encounter errors.');
         setIsLoading(false);
         setProgress('');
         return;
+      }
+
+      if (fileSizeMB > 4.5) {
+        setProgress('Large file detected. Uploading... (this may take a moment)');
       }
 
       // Upload directly
@@ -86,7 +90,23 @@ export default function Home() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to analyze voice');
+        // Try to get detailed error message from response
+        let errorMessage = 'Failed to analyze voice';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+
+          // Provide helpful message for 413 errors
+          if (response.status === 413) {
+            errorMessage = 'Video file is too large for upload. Please use a video under 10MB or compress it.';
+          }
+        } catch (e) {
+          // If response isn't JSON, use status code
+          if (response.status === 413) {
+            errorMessage = 'Video file is too large for upload. Please use a video under 10MB or compress it.';
+          }
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
@@ -94,6 +114,7 @@ export default function Home() {
       setSelectedVoiceId(data.recommendedVoices[0]?.voiceId || '');
       setStep('voice-selection');
     } catch (err) {
+      console.error('Voice analysis error:', err);
       setError(err instanceof Error ? err.message : 'Voice analysis failed');
     } finally {
       setIsLoading(false);
