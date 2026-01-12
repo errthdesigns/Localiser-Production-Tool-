@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GeminiService } from '@/lib/services/gemini';
+import { OpenAIVideoService } from '@/lib/services/openai-video';
 import { VoiceMatchingService } from '@/lib/services/voice-matching';
 
 export const runtime = 'nodejs';
@@ -11,22 +11,22 @@ export async function POST(request: NextRequest) {
     console.log('Request URL:', request.url);
     console.log('Request method:', request.method);
 
-    const geminiApiKey = process.env.GEMINI_API_KEY;
+    const openaiApiKey = process.env.OPENAI_API_KEY;
     const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
 
     console.log('API Keys check:', {
-      hasGemini: !!geminiApiKey,
+      hasOpenAI: !!openaiApiKey,
       hasElevenLabs: !!elevenLabsApiKey,
-      geminiLength: geminiApiKey?.length || 0,
+      openaiLength: openaiApiKey?.length || 0,
       elevenLabsLength: elevenLabsApiKey?.length || 0,
-      geminiPrefix: geminiApiKey?.substring(0, 15) || 'NOT_SET',
+      openaiPrefix: openaiApiKey?.substring(0, 15) || 'NOT_SET',
       elevenLabsPrefix: elevenLabsApiKey?.substring(0, 15) || 'NOT_SET'
     });
 
-    if (!geminiApiKey || !elevenLabsApiKey) {
+    if (!openaiApiKey || !elevenLabsApiKey) {
       console.error('Missing API keys!');
       return NextResponse.json(
-        { error: 'API keys not configured. Please add GEMINI_API_KEY and ELEVENLABS_API_KEY to environment variables.' },
+        { error: 'API keys not configured. Please add OPENAI_API_KEY and ELEVENLABS_API_KEY to environment variables.' },
         { status: 500 }
       );
     }
@@ -83,9 +83,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Analyze voice characteristics
-    console.log('Starting Gemini voice analysis...');
-    const geminiService = new GeminiService(geminiApiKey);
-    const voiceCharacteristics = await geminiService.analyzeVoiceCharacteristics(videoFile);
+    console.log('Starting OpenAI GPT-4o voice analysis...');
+    const openaiService = new OpenAIVideoService(openaiApiKey);
+    const voiceCharacteristics = await openaiService.analyzeVoiceCharacteristics(videoFile);
 
     console.log('Voice characteristics received:', voiceCharacteristics);
 
