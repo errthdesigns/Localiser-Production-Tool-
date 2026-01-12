@@ -67,16 +67,12 @@ export default function Home() {
     try {
       const fileSizeMB = videoFile.size / 1024 / 1024;
 
-      // Warn about large files but allow them to try
-      if (fileSizeMB > 15) {
-        setError('Video file is very large (over 15MB). This may fail due to upload limits. Try a shorter or compressed video if you encounter errors.');
+      // Check file size - Vercel Hobby plan has 4.5MB limit for serverless functions
+      if (fileSizeMB > 4.5) {
+        setError(`Video file is ${fileSizeMB.toFixed(2)}MB, which exceeds Vercel's 4.5MB limit. Please compress your video or use a shorter clip.`);
         setIsLoading(false);
         setProgress('');
         return;
-      }
-
-      if (fileSizeMB > 4.5) {
-        setProgress('Large file detected. Uploading... (this may take a moment)');
       }
 
       // Upload directly
@@ -98,12 +94,12 @@ export default function Home() {
 
           // Provide helpful message for 413 errors
           if (response.status === 413) {
-            errorMessage = 'Video file is too large for upload. Please use a video under 10MB or compress it.';
+            errorMessage = 'Video file is too large for upload. Vercel has a 4.5MB limit. Please compress your video or use a shorter clip.';
           }
         } catch (e) {
           // If response isn't JSON, use status code
           if (response.status === 413) {
-            errorMessage = 'Video file is too large for upload. Please use a video under 10MB or compress it.';
+            errorMessage = 'Video file is too large for upload. Vercel has a 4.5MB limit. Please compress your video or use a shorter clip.';
           }
         }
         throw new Error(errorMessage);
