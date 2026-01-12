@@ -31,31 +31,56 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('Parsing form data...');
-    const formData = await request.formData();
-    const videoFile = formData.get('video') as File;
-    const targetLanguage = (formData.get('targetLanguage') as string) || 'en';
+    // Check if this is JSON (blob URL) or FormData (direct upload)
+    const contentType = request.headers.get('content-type');
+    let videoFile: File;
+    let targetLanguage = 'en';
 
-    console.log('Form data parsed:', {
-      hasVideo: !!videoFile,
-      targetLanguage,
-      videoType: videoFile?.constructor.name
-    });
+    if (contentType?.includes('application/json')) {
+      // Handle blob URL
+      console.log('Handling blob URL upload...');
+      const body = await request.json();
+      const videoUrl = body.videoUrl;
+      targetLanguage = body.targetLanguage || 'en';
 
-    if (!videoFile) {
-      console.error('No video file in form data');
-      return NextResponse.json(
-        { error: 'No video file provided' },
-        { status: 400 }
-      );
+      console.log('Fetching video from blob:', videoUrl);
+
+      // Fetch the video from blob storage
+      const videoResponse = await fetch(videoUrl);
+      if (!videoResponse.ok) {
+        throw new Error('Failed to fetch video from blob storage');
+      }
+
+      const videoBlob = await videoResponse.blob();
+      const fileName = videoUrl.split('/').pop() || 'video.mp4';
+      videoFile = new File([videoBlob], fileName, { type: videoBlob.type || 'video/mp4' });
+
+      console.log('Video fetched from blob:', {
+        size: videoFile.size,
+        type: videoFile.type,
+        name: videoFile.name
+      });
+    } else {
+      // Handle direct FormData upload (backward compatibility)
+      console.log('Handling direct FormData upload...');
+      const formData = await request.formData();
+      videoFile = formData.get('video') as File;
+      targetLanguage = (formData.get('targetLanguage') as string) || 'en';
+
+      if (!videoFile) {
+        console.error('No video file in form data');
+        return NextResponse.json(
+          { error: 'No video file provided' },
+          { status: 400 }
+        );
+      }
+
+      console.log('Video file details:', {
+        name: videoFile.name,
+        size: videoFile.size,
+        type: videoFile.type
+      });
     }
-
-    console.log('Video file details:', {
-      name: videoFile.name,
-      size: videoFile.size,
-      type: videoFile.type,
-      hasArrayBuffer: typeof videoFile.arrayBuffer === 'function'
-    });
 
     // Analyze voice characteristics
     console.log('Starting Gemini voice analysis...');

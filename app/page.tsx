@@ -62,27 +62,39 @@ export default function Home() {
 
     setIsLoading(true);
     setError('');
-    setProgress('Analyzing video and detecting voice characteristics...');
+    setProgress('Uploading video...');
 
     try {
       const fileSizeMB = videoFile.size / 1024 / 1024;
 
-      // Check file size - Vercel Hobby plan has 4.5MB limit for serverless functions
-      if (fileSizeMB > 4.5) {
-        setError(`Video file is ${fileSizeMB.toFixed(2)}MB, which exceeds Vercel's 4.5MB limit. Please compress your video or use a shorter clip.`);
+      // Warn about very large files
+      if (fileSizeMB > 50) {
+        setError(`Video file is ${fileSizeMB.toFixed(2)}MB. Maximum file size is 50MB.`);
         setIsLoading(false);
         setProgress('');
         return;
       }
 
-      // Upload directly
-      const formData = new FormData();
-      formData.append('video', videoFile);
-      formData.append('targetLanguage', targetLanguage);
+      // Upload to Vercel Blob using client-side upload
+      const { upload } = await import('@vercel/blob/client');
 
+      setProgress(`Uploading ${fileSizeMB.toFixed(1)}MB video...`);
+      const blob = await upload(videoFile.name, videoFile, {
+        access: 'public',
+        handleUploadUrl: '/api/upload',
+      });
+
+      console.log('Video uploaded to blob:', blob.url);
+      setProgress('Analyzing video and detecting voice characteristics...');
+
+      // Now analyze the uploaded video
       const response = await fetch('/api/recommend-voices', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoUrl: blob.url,
+          targetLanguage: targetLanguage,
+        }),
       });
 
       if (!response.ok) {
@@ -91,16 +103,8 @@ export default function Home() {
         try {
           const errorData = await response.json();
           errorMessage = errorData.error || errorMessage;
-
-          // Provide helpful message for 413 errors
-          if (response.status === 413) {
-            errorMessage = 'Video file is too large for upload. Vercel has a 4.5MB limit. Please compress your video or use a shorter clip.';
-          }
         } catch (e) {
-          // If response isn't JSON, use status code
-          if (response.status === 413) {
-            errorMessage = 'Video file is too large for upload. Vercel has a 4.5MB limit. Please compress your video or use a shorter clip.';
-          }
+          // Use default error message
         }
         throw new Error(errorMessage);
       }
