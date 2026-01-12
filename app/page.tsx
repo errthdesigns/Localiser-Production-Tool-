@@ -62,73 +62,59 @@ export default function Home() {
 
     setIsLoading(true);
     setError('');
+    setProgress('Uploading video...');
 
     try {
       const fileSizeMB = videoFile.size / 1024 / 1024;
-      let videoUrl: string | null = null;
 
-      // If file is larger than 4MB, upload to Blob storage first
-      if (fileSizeMB > 4) {
-        setProgress('Uploading video (large file)...');
-
-        const uploadFormData = new FormData();
-        uploadFormData.append('video', videoFile);
-
-        const uploadResponse = await fetch('/api/upload-video', {
-          method: 'POST',
-          body: uploadFormData,
-        });
-
-        if (!uploadResponse.ok) {
-          throw new Error('Failed to upload video');
-        }
-
-        const uploadData = await uploadResponse.json();
-        videoUrl = uploadData.url;
-
-        setProgress('Analyzing video and detecting voice characteristics...');
-
-        // Use JSON with video URL
-        const response = await fetch('/api/recommend-voices', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            videoUrl,
-            targetLanguage,
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to analyze voice');
-        }
-
-        const data = await response.json();
-        setVoiceRecommendations(data);
-        setSelectedVoiceId(data.recommendedVoices[0]?.voiceId || '');
-        setStep('voice-selection');
-      } else {
-        // For smaller files, upload directly
-        setProgress('Analyzing video and detecting voice characteristics...');
-
-        const formData = new FormData();
-        formData.append('video', videoFile);
-        formData.append('targetLanguage', targetLanguage);
-
-        const response = await fetch('/api/recommend-voices', {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to analyze voice');
-        }
-
-        const data = await response.json();
-        setVoiceRecommendations(data);
-        setSelectedVoiceId(data.recommendedVoices[0]?.voiceId || '');
-        setStep('voice-selection');
+      // Warn about very large files
+      if (fileSizeMB > 50) {
+        setError(`Video file is ${fileSizeMB.toFixed(2)}MB. Maximum file size is 50MB.`);
+        setIsLoading(false);
+        setProgress('');
+        return;
       }
+
+      // Upload to Vercel Blob using client-side upload
+      const { upload } = await import('@vercel/blob/client');
+
+      setProgress(`Uploading ${fileSizeMB.toFixed(1)}MB video...`);
+      const blob = await upload(videoFile.name, videoFile, {
+        access: 'public',
+        handleUploadUrl: '/api/upload',
+      });
+
+      console.log('Video uploaded to blob:', blob.url);
+      setProgress('Analyzing video and detecting voice characteristics...');
+
+      // Now analyze the uploaded video
+      const response = await fetch('/api/recommend-voices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoUrl: blob.url,
+          targetLanguage: targetLanguage,
+        }),
+      });
+
+      if (!response.ok) {
+        // Try to get detailed error message from response
+        let errorMessage = 'Failed to analyze voice';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch (e) {
+          // Use default error message
+        }
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      setVoiceRecommendations(data);
+      setSelectedVoiceId(data.recommendedVoices[0]?.voiceId || '');
+      setStep('voice-selection');
     } catch (err) {
+      console.error('Voice analysis error:', err);
       setError(err instanceof Error ? err.message : 'Voice analysis failed');
     } finally {
       setIsLoading(false);
@@ -301,7 +287,7 @@ export default function Home() {
               ) : (
                 <div>
                   <p className="text-lg text-gray-600">Drop video file here or click to browse</p>
-                  <p className="text-sm text-gray-400 mt-2">Supports MP4, MOV, AVI</p>
+                  <p className="text-sm text-gray-400 mt-2">Supports MP4, MOV, AVI (max 4MB for demo)</p>
                 </div>
               )}
             </div>

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GeminiService } from '@/lib/services/gemini';
+import { OpenAIVideoService } from '@/lib/services/openai-video';
 import { VoiceMatchingService } from '@/lib/services/voice-matching';
 
 export const runtime = 'nodejs';
@@ -7,70 +7,117 @@ export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   try {
-    const geminiApiKey = process.env.GEMINI_API_KEY;
+    console.log('=== RECOMMEND VOICES API CALLED ===');
+    console.log('Request URL:', request.url);
+    console.log('Request method:', request.method);
+
+    const openaiApiKey = process.env.OPENAI_API_KEY;
     const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
 
-    if (!geminiApiKey || !elevenLabsApiKey) {
+    console.log('API Keys check:', {
+      hasOpenAI: !!openaiApiKey,
+      hasElevenLabs: !!elevenLabsApiKey,
+      openaiLength: openaiApiKey?.length || 0,
+      elevenLabsLength: elevenLabsApiKey?.length || 0,
+      openaiPrefix: openaiApiKey?.substring(0, 15) || 'NOT_SET',
+      elevenLabsPrefix: elevenLabsApiKey?.substring(0, 15) || 'NOT_SET'
+    });
+
+    if (!openaiApiKey || !elevenLabsApiKey) {
+      console.error('Missing API keys!');
       return NextResponse.json(
-        { error: 'API keys not configured' },
+        { error: 'API keys not configured. Please add OPENAI_API_KEY and ELEVENLABS_API_KEY to environment variables.' },
         { status: 500 }
       );
     }
 
-    // Check if we're receiving JSON (with video URL) or FormData (with file)
+    // Check if this is JSON (blob URL) or FormData (direct upload)
     const contentType = request.headers.get('content-type');
-
-    let videoFile: File | null = null;
-    let videoUrl: string | null = null;
+    let videoFile: File;
     let targetLanguage = 'en';
 
     if (contentType?.includes('application/json')) {
-      // Receiving video URL from Blob storage
+      // Handle blob URL
+      console.log('Handling blob URL upload...');
       const body = await request.json();
-      videoUrl = body.videoUrl;
+      const videoUrl = body.videoUrl;
       targetLanguage = body.targetLanguage || 'en';
 
-      if (!videoUrl) {
-        return NextResponse.json(
-          { error: 'No video URL provided' },
-          { status: 400 }
-        );
+      console.log('Fetching video from blob:', videoUrl);
+
+      // Fetch the video from blob storage
+      const videoResponse = await fetch(videoUrl);
+      if (!videoResponse.ok) {
+        throw new Error('Failed to fetch video from blob storage');
       }
 
-      // Download video from URL
-      const response = await fetch(videoUrl);
-      const videoBlob = await response.blob();
-      videoFile = new File([videoBlob], 'video.mp4', { type: videoBlob.type });
+      const videoBlob = await videoResponse.blob();
+      const fileName = videoUrl.split('/').pop() || 'video.mp4';
+      videoFile = new File([videoBlob], fileName, { type: videoBlob.type || 'video/mp4' });
+
+      console.log('Video fetched from blob:', {
+        size: videoFile.size,
+        type: videoFile.type,
+        name: videoFile.name
+      });
     } else {
-      // Receiving direct file upload (for smaller files)
+      // Handle direct FormData upload (backward compatibility)
+      console.log('Handling direct FormData upload...');
       const formData = await request.formData();
       videoFile = formData.get('video') as File;
       targetLanguage = (formData.get('targetLanguage') as string) || 'en';
 
       if (!videoFile) {
+        console.error('No video file in form data');
         return NextResponse.json(
           { error: 'No video file provided' },
           { status: 400 }
         );
       }
+
+      console.log('Video file details:', {
+        name: videoFile.name,
+        size: videoFile.size,
+        type: videoFile.type
+      });
     }
 
     // Analyze voice characteristics
-    const geminiService = new GeminiService(geminiApiKey);
-    const voiceCharacteristics = await geminiService.analyzeVoiceCharacteristics(videoFile);
+    console.log('Starting OpenAI GPT-4o voice analysis...');
+    const openaiService = new OpenAIVideoService(openaiApiKey);
+    const voiceCharacteristics = await openaiService.analyzeVoiceCharacteristics(videoFile);
+
+    console.log('Voice characteristics received:', voiceCharacteristics);
 
     // Find matching voices
+    console.log('Finding matching voices for language:', targetLanguage);
     const voiceMatchingService = new VoiceMatchingService(elevenLabsApiKey);
     const recommendations = await voiceMatchingService.getVoiceRecommendations(
       voiceCharacteristics,
       targetLanguage
     );
 
+    console.log('Recommendations generated:', {
+      count: recommendations.recommendedVoices.length,
+      topMatch: recommendations.recommendedVoices[0]?.name
+    });
+
+    console.log('=== SUCCESS - Returning recommendations ===');
     return NextResponse.json(recommendations);
   } catch (error) {
-    console.error('Voice recommendation error:', error);
+    console.error('=== ERROR in recommend-voices ===');
+    console.error('Error type:', error?.constructor.name);
+    console.error('Error message:', error instanceof Error ? error.message : 'Unknown');
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack');
+    console.error('Full error object:', error);
+
+    // Return detailed error for debugging
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Recommendation failed' },
+      {
+        error: error instanceof Error ? error.message : 'Recommendation failed',
+        details: error instanceof Error ? error.stack : 'Unknown error',
+        errorType: error?.constructor.name
+      },
       { status: 500 }
     );
   }

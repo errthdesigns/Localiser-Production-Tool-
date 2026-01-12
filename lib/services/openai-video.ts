@@ -1,14 +1,11 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import OpenAI from 'openai';
 import { VideoAnalysisResult, VoiceCharacteristics } from '../types';
 
-export class GeminiService {
-  private genAI: GoogleGenerativeAI;
-  private model: any;
+export class OpenAIVideoService {
+  private openai: OpenAI;
 
   constructor(apiKey: string) {
-    this.genAI = new GoogleGenerativeAI(apiKey);
-    // Using Gemini Flash model - available on free tier and supports video analysis
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    this.openai = new OpenAI({ apiKey });
   }
 
   async analyzeVideo(videoFile: File): Promise<VideoAnalysisResult> {
@@ -16,7 +13,15 @@ export class GeminiService {
       const videoBuffer = await videoFile.arrayBuffer();
       const videoBase64 = Buffer.from(videoBuffer).toString('base64');
 
-      const prompt = `Analyze this video and provide:
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: `Analyze this video and provide:
 1. Full transcript with timestamps
 2. Description of key visual scenes
 3. Overall context and mood
@@ -29,35 +34,37 @@ Return as JSON: {
   "visualContext": "overall description",
   "duration": 60,
   "language": "en"
-}`;
-
-      const result = await this.model.generateContent([
-        {
-          inlineData: {
-            mimeType: videoFile.type,
-            data: videoBase64
+}`
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:${videoFile.type};base64,${videoBase64}`
+                }
+              }
+            ]
           }
-        },
-        { text: prompt }
-      ]);
+        ],
+        max_tokens: 1000
+      });
 
-      const response = result.response.text();
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      const content = response.choices[0].message.content || '';
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
 
       if (!jsonMatch) {
-        throw new Error('Failed to parse Gemini response');
+        throw new Error('Failed to parse OpenAI response');
       }
 
       return JSON.parse(jsonMatch[0]);
     } catch (error) {
-      console.error('Gemini video analysis error:', error);
+      console.error('OpenAI video analysis error:', error);
       throw new Error(`Video analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
   async analyzeVoiceCharacteristics(videoFile: File): Promise<VoiceCharacteristics> {
     try {
-      console.log('analyzeVoiceCharacteristics - Starting analysis');
+      console.log('analyzeVoiceCharacteristics - Starting analysis with OpenAI');
       console.log('Video file details:', {
         name: videoFile.name,
         size: videoFile.size,
@@ -69,16 +76,11 @@ Return as JSON: {
         throw new Error('Invalid video file: file is empty or undefined');
       }
 
-      if (videoFile.size > 20 * 1024 * 1024) {
-        throw new Error('Video file too large for Gemini API (max 20MB)');
-      }
-
       console.log('Converting video to base64...');
       const videoBuffer = await videoFile.arrayBuffer();
       const videoBase64 = Buffer.from(videoBuffer).toString('base64');
       console.log('Base64 conversion complete, length:', videoBase64.length);
 
-      // Determine mime type - default to video/mp4 if not available
       const mimeType = videoFile.type || 'video/mp4';
       console.log('Using mime type:', mimeType);
 
@@ -103,42 +105,37 @@ Return ONLY valid JSON: {
   "description": "A warm, authoritative male voice..."
 }`;
 
-      console.log('Calling Gemini API with prompt...');
-      console.log('Prompt length:', prompt.length);
-
-      let result;
-      try {
-        result = await this.model.generateContent([
+      console.log('Calling OpenAI GPT-4o API...');
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
           {
-            inlineData: {
-              mimeType: mimeType,
-              data: videoBase64
-            }
-          },
-          { text: prompt }
-        ]);
-        console.log('Gemini API call completed');
-      } catch (apiError) {
-        console.error('Gemini API call failed:', apiError);
-        // Extract more specific error information
-        if (apiError instanceof Error) {
-          console.error('API Error details:', {
-            name: apiError.name,
-            message: apiError.message,
-            stack: apiError.stack
-          });
-        }
-        throw apiError;
-      }
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: prompt
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:${mimeType};base64,${videoBase64}`
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: 500
+      });
 
-      console.log('Getting response text...');
-      const response = result.response.text();
-      console.log('Raw Gemini response (first 200 chars):', response.substring(0, 200));
+      console.log('OpenAI API call completed');
+      const content = response.choices[0].message.content || '';
+      console.log('Raw OpenAI response (first 200 chars):', content.substring(0, 200));
 
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
 
       if (!jsonMatch) {
-        console.error('Failed to extract JSON from response:', response);
+        console.error('Failed to extract JSON from response:', content);
         throw new Error('Failed to parse voice characteristics - no JSON found in response');
       }
 
@@ -152,22 +149,9 @@ Return ONLY valid JSON: {
         error: error
       });
 
-      // Provide more specific error messages
-      if (error instanceof Error) {
-        if (error.message.includes('API key')) {
-          throw new Error('Gemini API key is invalid or not configured properly');
-        }
-        if (error.message.includes('quota')) {
-          throw new Error('Gemini API quota exceeded - please check your API limits');
-        }
-        if (error.message.includes('permission')) {
-          throw new Error('Gemini API permission denied - check API key permissions');
-        }
-      }
-
       throw new Error(`Voice analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 }
 
-export default GeminiService;
+export default OpenAIVideoService;

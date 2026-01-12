@@ -1,16 +1,13 @@
 {
   "functions": {
     "app/api/recommend-voices/route.ts": {
-      "maxDuration": 60,
-      "memory": 1024
+      "maxDuration": 60
     },
     "app/api/analyze-video/route.ts": {
-      "maxDuration": 60,
-      "memory": 1024
+      "maxDuration": 60
     },
     "app/api/generate-video/route.ts": {
-      "maxDuration": 300,
-      "memory": 1024
+      "maxDuration": 300
     }
   }
 }
