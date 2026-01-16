@@ -23,7 +23,6 @@ export default function Home() {
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoUrl, setVideoUrl] = useState<string>(''); // Store the uploaded video URL
   const [targetLanguage, setTargetLanguage] = useState('es');
-  const [speakerCount, setSpeakerCount] = useState<number>(0); // 0 = auto-detect
   const [useDubbingStudio, setUseDubbingStudio] = useState(true); // Default to dubbing studio
   const [useFastMode, setUseFastMode] = useState(true); // Default to fast mode (1-2 min)
   const [dubbingId, setDubbingId] = useState<string>('');
@@ -247,7 +246,6 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           videoUrl: blob.url,
-          speakerCount: speakerCount, // Pass speaker count for better accuracy
         }),
       });
 
@@ -618,27 +616,6 @@ export default function Home() {
                   </option>
                 ))}
               </select>
-            </div>
-
-            <div className="mt-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Number of Speakers
-              </label>
-              <select
-                value={speakerCount}
-                onChange={(e) => setSpeakerCount(Number(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value={0}>Auto-detect</option>
-                <option value={1}>1 Speaker (Voiceover)</option>
-                <option value={2}>2 Speakers</option>
-                <option value={3}>3 Speakers</option>
-                <option value={4}>4 Speakers</option>
-                <option value={5}>5 Speakers</option>
-              </select>
-              <p className="text-xs text-gray-500 mt-1">
-                Specify the number of speakers to improve accuracy (you can edit afterwards)
-              </p>
             </div>
 
             <div className="mt-6 bg-gray-50 p-4 rounded-lg space-y-4">
