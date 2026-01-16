@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ElevenLabsDubbingService } from '@/lib/services/elevenlabs-dubbing';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic'; // Prevent static generation
 
 export async function GET(request: NextRequest) {
   try {
