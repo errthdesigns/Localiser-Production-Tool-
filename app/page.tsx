@@ -36,6 +36,9 @@ export default function Home() {
   const [translatedText, setTranslatedText] = useState<string>('');
   const [detectedLanguage, setDetectedLanguage] = useState<string>('');
   const [editableTranscript, setEditableTranscript] = useState<string>('');
+  const [previewTranslation, setPreviewTranslation] = useState<string>('');
+  const [showPreview, setShowPreview] = useState<boolean>(false);
+  const [isLoadingPreview, setIsLoadingPreview] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const languages = [
@@ -268,6 +271,42 @@ export default function Home() {
     } finally {
       setIsLoading(false);
       setProgress('');
+    }
+  };
+
+  const loadTranslationPreview = async () => {
+    setIsLoadingPreview(true);
+    setError('');
+
+    try {
+      console.log('Loading translation preview...');
+
+      const response = await fetch('/api/translate-preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transcript: editableTranscript,
+          sourceLanguage: detectedLanguage,
+          targetLanguage: targetLanguage,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Translation preview failed');
+      }
+
+      const data = await response.json();
+
+      console.log('Translation preview loaded!');
+      setPreviewTranslation(data.translatedText);
+      setShowPreview(true);
+
+    } catch (err) {
+      console.error('Preview error:', err);
+      setError(err instanceof Error ? err.message : 'Translation preview failed');
+    } finally {
+      setIsLoadingPreview(false);
     }
   };
 
@@ -690,26 +729,69 @@ export default function Home() {
             </div>
 
             <div className="mb-6">
-              <div className="flex justify-between items-center mb-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  Video Production Script
-                  <span className="text-gray-500 font-normal ml-2">({editableTranscript.length} characters)</span>
-                </label>
+              <div className="flex justify-between items-center mb-3">
                 <div className="flex gap-2 text-xs">
                   <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded">[TITLE]</span>
                   <span className="bg-green-100 text-green-800 px-2 py-1 rounded">[SUPER]</span>
                   <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded">[LOCKUP]</span>
                   <span className="bg-orange-100 text-orange-800 px-2 py-1 rounded">[SCENE]</span>
                 </div>
+                <button
+                  onClick={loadTranslationPreview}
+                  disabled={isLoadingPreview || !editableTranscript.trim()}
+                  className="px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 disabled:bg-gray-400 transition"
+                >
+                  {isLoadingPreview ? '⏳ Loading...' : showPreview ? '🔄 Refresh Preview' : '👁️ Preview Translation'}
+                </button>
               </div>
-              <textarea
-                value={editableTranscript}
-                onChange={(e) => setEditableTranscript(e.target.value)}
-                rows={16}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm leading-relaxed bg-gray-50"
-                placeholder="Edit script here..."
-                style={{ lineHeight: '1.6' }}
-              />
+
+              {showPreview ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Original ({detectedLanguage.toUpperCase()})
+                      <span className="text-gray-500 font-normal ml-2">({editableTranscript.length} chars)</span>
+                    </label>
+                    <textarea
+                      value={editableTranscript}
+                      onChange={(e) => {
+                        setEditableTranscript(e.target.value);
+                        setShowPreview(false); // Hide preview when editing
+                      }}
+                      rows={16}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm leading-relaxed bg-gray-50"
+                      placeholder="Edit script here..."
+                      style={{ lineHeight: '1.6' }}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Translated ({languages.find(l => l.code === targetLanguage)?.name})
+                      <span className="text-gray-500 font-normal ml-2">({previewTranslation.length} chars)</span>
+                    </label>
+                    <div className="w-full px-4 py-3 border border-green-300 rounded-lg font-mono text-sm leading-relaxed bg-green-50 overflow-y-auto" style={{ height: '400px', lineHeight: '1.6' }}>
+                      {previewTranslation.split('\n').map((line, i) => (
+                        <div key={i}>{line || '\u00A0'}</div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Video Production Script
+                    <span className="text-gray-500 font-normal ml-2">({editableTranscript.length} characters)</span>
+                  </label>
+                  <textarea
+                    value={editableTranscript}
+                    onChange={(e) => setEditableTranscript(e.target.value)}
+                    rows={16}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm leading-relaxed bg-gray-50"
+                    placeholder="Edit script here..."
+                    style={{ lineHeight: '1.6' }}
+                  />
+                </div>
+              )}
             </div>
 
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">

@@ -27,6 +27,9 @@
     "app/api/translate-and-dub/route.ts": {
       "maxDuration": 180
     },
+    "app/api/translate-preview/route.ts": {
+      "maxDuration": 60
+    },
     "app/api/format-script/route.ts": {
       "maxDuration": 60
     }
