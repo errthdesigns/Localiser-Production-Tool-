@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { fetchFile, toBlobURL } from '@ffmpeg/util';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -146,57 +144,8 @@ export async function POST(request: NextRequest) {
 
     console.log('TTS complete! Audio size:', audioBuffer.byteLength, 'bytes');
 
-    // Step 3: Download original video
-    console.log('[3/4] Downloading original video...');
-
-    const videoResponse = await fetch(videoUrl);
-    if (!videoResponse.ok) {
-      throw new Error('Failed to download video from URL');
-    }
-    const videoBuffer = await videoResponse.arrayBuffer();
-    console.log('Video downloaded:', videoBuffer.byteLength, 'bytes');
-
-    // Step 4: Combine video with dubbed audio using WebAssembly FFmpeg
-    console.log('[4/4] Combining video with dubbed audio using FFmpeg...');
-
-    // Initialize FFmpeg
-    const ffmpeg = new FFmpeg();
-
-    // Load FFmpeg core
-    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
-    await ffmpeg.load({
-      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-    });
-
-    console.log('FFmpeg loaded successfully');
-
-    // Write input files to FFmpeg virtual filesystem
-    await ffmpeg.writeFile('input.mp4', new Uint8Array(videoBuffer));
-    await ffmpeg.writeFile('audio.mp3', new Uint8Array(audioBuffer));
-
-    console.log('Files written to FFmpeg filesystem');
-
-    // Run FFmpeg command to replace audio track
-    // -i input.mp4 -i audio.mp3 -c:v copy -map 0:v:0 -map 1:a:0 -shortest output.mp4
-    await ffmpeg.exec([
-      '-i', 'input.mp4',
-      '-i', 'audio.mp3',
-      '-c:v', 'copy',
-      '-map', '0:v:0',
-      '-map', '1:a:0',
-      '-shortest',
-      'output.mp4'
-    ]);
-
-    console.log('FFmpeg processing complete!');
-
-    // Read the output video from FFmpeg filesystem
-    const dubbedVideoData = await ffmpeg.readFile('output.mp4');
-    const dubbedVideoBuffer = Buffer.from(dubbedVideoData as Uint8Array);
-    const videoBase64 = dubbedVideoBuffer.toString('base64');
-
-    console.log('Dubbed video created:', dubbedVideoBuffer.length, 'bytes');
+    // Convert audio to base64 for response
+    const audioBase64 = Buffer.from(audioBuffer).toString('base64');
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(`=== Translation and Dubbing Complete in ${duration}s ===`);
@@ -204,7 +153,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       translatedText,
-      videoData: videoBase64, // Return dubbed video instead of audio
+      audioData: audioBase64, // Return dubbed audio (video combination temporarily disabled)
       processingTime: duration,
     });
 
