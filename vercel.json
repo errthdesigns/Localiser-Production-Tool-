@@ -8,6 +8,30 @@
     },
     "app/api/generate-video/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/dub-video/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/dub-video/status/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/dub-video/download/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/fast-dub/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/transcribe/route.ts": {
+      "maxDuration": 180
+    },
+    "app/api/translate-and-dub/route.ts": {
+      "maxDuration": 180
+    },
+    "app/api/translate-preview/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/format-script/route.ts": {
+      "maxDuration": 60
     }
   }
 }
