@@ -1,24 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
-import * as fs from 'fs';
-import * as path from 'path';
-import { promisify } from 'util';
-
-const writeFile = promisify(fs.writeFile);
-const unlink = promisify(fs.unlink);
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('=== Starting Transcription ===');
+    console.log('=== Starting Video Analysis with Gemini ===');
 
-    const openaiApiKey = process.env.OPENAI_API_KEY;
+    const geminiApiKey = process.env.GEMINI_API_KEY;
 
-    if (!openaiApiKey) {
+    if (!geminiApiKey) {
       return NextResponse.json(
-        { error: 'OpenAI API key not configured' },
+        { error: 'Gemini API key not configured' },
         { status: 500 }
       );
     }
@@ -33,64 +27,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('Transcribing video with OpenAI Whisper...');
+    console.log('Analyzing video with Gemini 2.0 Flash...');
     const startTime = Date.now();
 
-    // Step 1: Transcribe with OpenAI Whisper
-    console.log('[1/2] Transcribing audio with Whisper...');
-    const openai = new OpenAI({ apiKey: openaiApiKey });
-
-    // Fetch the video
+    // Step 1: Download video
+    console.log('[1/2] Downloading video...');
     const videoResponse = await fetch(videoUrl);
     const arrayBuffer = await videoResponse.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const videoBase64 = Buffer.from(arrayBuffer).toString('base64');
 
-    // Save to temporary file (Vercel allows /tmp directory)
-    const tmpFilename = `video-${Date.now()}.mp4`;
-    const tmpPath = path.join('/tmp', tmpFilename);
+    console.log('Video downloaded, size:', arrayBuffer.byteLength, 'bytes');
 
-    console.log('Saving video to temp file:', tmpPath);
-    await writeFile(tmpPath, buffer);
+    // Step 2: Analyze with Gemini (video understanding + speaker detection)
+    console.log('[2/2] Analyzing video with Gemini for transcription and speaker detection...');
 
-    console.log('Transcribing with Whisper...');
+    const genAI = new GoogleGenerativeAI(geminiApiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
 
-    // Use fs.createReadStream - this is what OpenAI expects in Node.js
-    const transcription = await openai.audio.transcriptions.create({
-      file: fs.createReadStream(tmpPath) as any,
-      model: 'whisper-1',
-      language: sourceLanguage || undefined,
-    });
+    const prompt = `Watch this video carefully and transcribe all spoken dialogue with accurate speaker attribution.
 
-    // Clean up temp file
-    await unlink(tmpPath).catch(err => console.warn('Failed to delete temp file:', err));
+CRITICAL INSTRUCTIONS:
 
-    const rawTranscript = transcription.text;
-    console.log('Transcription complete!');
-    console.log('Raw transcript:', rawTranscript.substring(0, 150) + '...');
-
-    // Step 2: Format with GPT-4 (add speaker labels and production markers)
-    console.log('[2/2] Formatting script with GPT-4...');
-
-    const scriptPrompt = `You are a professional transcript formatter. Format the following video transcript with speaker labels.
-
-RULES:
-
-1. **SPEAKER DETECTION**: Analyze the dialogue carefully and assign speaker labels (SPEAKER 1, SPEAKER 2, etc.) based on:
-   - Conversation flow and turn-taking
-   - Distinct speaking styles and tones
-   - Questions and responses between different people
-   - Clear dialogue exchanges
-   - Be conservative - only add a new speaker when the dialogue clearly indicates a different person
-
-2. **FORMAT**: Use clean, simple formatting:
+1. **WATCH THE VIDEO** - Observe who is speaking at each moment by watching their mouth movements and visual cues
+2. **ACCURATE SPEAKER DETECTION** - Assign speakers (SPEAKER 1, SPEAKER 2, etc.) based on VISUAL observation of who is actually talking
+3. **TRANSCRIBE ALL DIALOGUE** - Write down everything that is spoken
+4. **CLEAN FORMAT** - Use simple formatting:
    - Each speaker on their own line
    - Format: "SPEAKER 1: [dialogue]"
-   - Keep natural paragraph breaks between different speakers
-   - Do NOT add any production markers like [SUPER], [TITLE], [LOCKUP], [SCENE]
-   - Do NOT try to infer visual elements - you only have audio
-   - Only include the actual spoken words
+   - Natural paragraph breaks between speakers
+   - NO production markers
+   - ONLY spoken words
 
-EXAMPLE FORMAT:
+EXAMPLE OUTPUT:
 
 SPEAKER 1:
 That's a good product!
@@ -99,43 +67,30 @@ SPEAKER 2:
 You don't actually think you're a toilet cleaner, do you?
 
 SPEAKER 1:
-Unlike you, I immerse myself in crafting character. Called method acting.
+Unlike you, I immerse myself in crafting character.
 
-SPEAKER 2:
-Yeah? Why don't you method act me an espresso, huh?
+Return ONLY the dialogue with accurate speaker labels based on visual observation.`;
 
----
-
-TRANSCRIPT:
-${rawTranscript}
-
-Return ONLY the formatted dialogue with speaker labels. NO production markers, NO scene descriptions, NO inferred visual elements.`;
-
-    const scriptResponse = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a professional transcript formatter. Format audio transcripts with accurate speaker labels. Only include spoken dialogue - no visual elements.'
-        },
-        {
-          role: 'user',
-          content: scriptPrompt
+    const result = await model.generateContent([
+      {
+        inlineData: {
+          mimeType: 'video/mp4',
+          data: videoBase64
         }
-      ],
-      temperature: 0.3,
-    });
+      },
+      { text: prompt }
+    ]);
 
-    const formattedScript = scriptResponse.choices[0].message.content || rawTranscript;
+    const formattedScript = result.response.text();
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(`=== Transcription Complete in ${duration}s ===`);
-    console.log('Formatted script preview:', formattedScript.substring(0, 200) + '...');
+    console.log(`=== Video Analysis Complete in ${duration}s ===`);
+    console.log('Transcript preview:', formattedScript.substring(0, 200) + '...');
 
     return NextResponse.json({
       success: true,
       text: formattedScript,
-      rawText: rawTranscript,
+      rawText: formattedScript, // Gemini provides the formatted transcript directly
       language: sourceLanguage || 'en',
       processingTime: duration,
     });
