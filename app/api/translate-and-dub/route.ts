@@ -1,19 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import { writeFile, unlink } from 'fs/promises';
-import path from 'path';
-import os from 'os';
-
-const execAsync = promisify(exec);
+import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { fetchFile, toBlobURL } from '@ffmpeg/util';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
-  const tempFiles: string[] = [];
-
   try {
     console.log('=== Starting Translation and Dubbing ===');
 
@@ -163,51 +156,47 @@ export async function POST(request: NextRequest) {
     const videoBuffer = await videoResponse.arrayBuffer();
     console.log('Video downloaded:', videoBuffer.byteLength, 'bytes');
 
-    // Step 4: Combine video with dubbed audio using ffmpeg
-    console.log('[4/4] Combining video with dubbed audio...');
+    // Step 4: Combine video with dubbed audio using WebAssembly FFmpeg
+    console.log('[4/4] Combining video with dubbed audio using FFmpeg...');
 
-    // Create temporary files
-    const tempDir = os.tmpdir();
-    const timestamp = Date.now();
-    const videoPath = path.join(tempDir, `input-${timestamp}.mp4`);
-    const audioPath = path.join(tempDir, `audio-${timestamp}.mp3`);
-    const outputPath = path.join(tempDir, `output-${timestamp}.mp4`);
+    // Initialize FFmpeg
+    const ffmpeg = new FFmpeg();
 
-    tempFiles.push(videoPath, audioPath, outputPath);
+    // Load FFmpeg core
+    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+    await ffmpeg.load({
+      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+    });
 
-    // Write files to disk
-    await writeFile(videoPath, Buffer.from(videoBuffer));
-    await writeFile(audioPath, Buffer.from(audioBuffer));
+    console.log('FFmpeg loaded successfully');
 
-    console.log('Temporary files created:');
-    console.log('- Video:', videoPath);
-    console.log('- Audio:', audioPath);
-    console.log('- Output:', outputPath);
+    // Write input files to FFmpeg virtual filesystem
+    await ffmpeg.writeFile('input.mp4', new Uint8Array(videoBuffer));
+    await ffmpeg.writeFile('audio.mp3', new Uint8Array(audioBuffer));
 
-    // Use ffmpeg to replace audio track
+    console.log('Files written to FFmpeg filesystem');
+
+    // Run FFmpeg command to replace audio track
     // -i input.mp4 -i audio.mp3 -c:v copy -map 0:v:0 -map 1:a:0 -shortest output.mp4
-    const ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${audioPath}" -c:v copy -map 0:v:0 -map 1:a:0 -shortest "${outputPath}"`;
+    await ffmpeg.exec([
+      '-i', 'input.mp4',
+      '-i', 'audio.mp3',
+      '-c:v', 'copy',
+      '-map', '0:v:0',
+      '-map', '1:a:0',
+      '-shortest',
+      'output.mp4'
+    ]);
 
-    console.log('Running ffmpeg command...');
-    await execAsync(ffmpegCommand);
-    console.log('ffmpeg processing complete!');
+    console.log('FFmpeg processing complete!');
 
-    // Read the output video
-    const fs = require('fs').promises;
-    const dubbedVideoBuffer = await fs.readFile(outputPath);
+    // Read the output video from FFmpeg filesystem
+    const dubbedVideoData = await ffmpeg.readFile('output.mp4');
+    const dubbedVideoBuffer = Buffer.from(dubbedVideoData as Uint8Array);
     const videoBase64 = dubbedVideoBuffer.toString('base64');
 
     console.log('Dubbed video created:', dubbedVideoBuffer.length, 'bytes');
-
-    // Clean up temp files
-    console.log('Cleaning up temporary files...');
-    for (const file of tempFiles) {
-      try {
-        await unlink(file);
-      } catch (err) {
-        console.warn('Failed to delete temp file:', file, err);
-      }
-    }
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(`=== Translation and Dubbing Complete in ${duration}s ===`);
@@ -223,15 +212,6 @@ export async function POST(request: NextRequest) {
     console.error('=== ERROR in translate-and-dub ===');
     console.error('Error:', error);
     console.error('Stack:', error instanceof Error ? error.stack : 'No stack trace');
-
-    // Clean up temp files on error
-    for (const file of tempFiles) {
-      try {
-        await unlink(file);
-      } catch (err) {
-        // Ignore cleanup errors
-      }
-    }
 
     return NextResponse.json(
       {
