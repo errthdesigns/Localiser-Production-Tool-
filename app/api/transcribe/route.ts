@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import * as fs from 'fs';
+import * as path from 'path';
+import { promisify } from 'util';
+
+const writeFile = promisify(fs.writeFile);
+const unlink = promisify(fs.unlink);
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -36,45 +42,29 @@ export async function POST(request: NextRequest) {
     console.log('[1/2] Transcribing audio with Whisper...');
     const openai = new OpenAI({ apiKey: openaiApiKey });
 
-    // Fetch the video and convert to buffer for Node.js environment
+    // Fetch the video
     const videoResponse = await fetch(videoUrl);
     const arrayBuffer = await videoResponse.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Extract filename from URL or use default
-    const urlParts = videoUrl.split('/');
-    const urlFilename = urlParts[urlParts.length - 1] || 'video.mp4';
+    // Save to temporary file (Vercel allows /tmp directory)
+    const tmpFilename = `video-${Date.now()}.mp4`;
+    const tmpPath = path.join('/tmp', tmpFilename);
 
-    // Decode URL-encoded filename and ensure it has proper extension
-    const decodedFilename = decodeURIComponent(urlFilename);
-    const filename = decodedFilename.endsWith('.mp4') || decodedFilename.endsWith('.mov') || decodedFilename.endsWith('.avi')
-      ? decodedFilename
-      : `${decodedFilename}.mp4`;
+    console.log('Saving video to temp file:', tmpPath);
+    await writeFile(tmpPath, buffer);
 
-    console.log('Transcribing file:', filename);
+    console.log('Transcribing with Whisper...');
 
-    // Create a Blob with proper filename metadata for OpenAI API
-    const blob = new Blob([buffer], { type: videoResponse.headers.get('content-type') || 'video/mp4' });
-
-    // Add the filename property that OpenAI expects
-    Object.defineProperty(blob, 'name', {
-      value: filename,
-      writable: false,
-      enumerable: true,
-      configurable: true
-    });
-
-    console.log('File prepared for upload:', {
-      name: (blob as any).name,
-      size: blob.size,
-      type: blob.type
-    });
-
+    // Use fs.createReadStream - this is what OpenAI expects in Node.js
     const transcription = await openai.audio.transcriptions.create({
-      file: blob as any,
+      file: fs.createReadStream(tmpPath) as any,
       model: 'whisper-1',
       language: sourceLanguage || undefined,
     });
+
+    // Clean up temp file
+    await unlink(tmpPath).catch(err => console.warn('Failed to delete temp file:', err));
 
     const rawTranscript = transcription.text;
     console.log('Transcription complete!');
