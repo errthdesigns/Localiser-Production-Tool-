@@ -201,23 +201,31 @@ export default function Home() {
   };
 
   const pollDubbingStatus = async (jobId: string) => {
-    const maxPolls = 60; // 5 minutes max (60 * 5 seconds)
+    const maxPolls = 120; // 10 minutes max (120 * 5 seconds)
     let polls = 0;
+    const startTime = Date.now();
 
     while (polls < maxPolls) {
       try {
         const response = await fetch(`/api/dub-video/status?dubbingId=${jobId}`);
         const data = await response.json();
 
-        console.log('Dubbing status:', data.status);
-        setProgress(`Dubbing status: ${data.status}...`);
+        const elapsedMinutes = Math.floor((Date.now() - startTime) / 60000);
+        const statusMessage = data.status === 'dubbing'
+          ? `Dubbing in progress (${elapsedMinutes}m elapsed)...`
+          : `Status: ${data.status} (${elapsedMinutes}m elapsed)...`;
+
+        console.log('Dubbing status:', data.status, 'Poll:', polls);
+        setProgress(statusMessage);
 
         if (data.ready) {
+          setProgress('Dubbing complete! Downloading video...');
           // Download the dubbed video
           const videoUrl = `/api/dub-video/download?dubbingId=${jobId}&targetLanguage=${targetLanguage}`;
           const videoResponse = await fetch(videoUrl);
           const videoBlob = await videoResponse.blob();
           setGeneratedVideo(videoBlob);
+          setProgress('');
           return;
         }
 
@@ -234,7 +242,7 @@ export default function Home() {
       }
     }
 
-    throw new Error('Dubbing timed out');
+    throw new Error('Dubbing timed out after 10 minutes. Please try again with a shorter video.');
   };
 
   const generateAudio = async (text: string) => {
