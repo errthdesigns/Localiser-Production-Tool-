@@ -347,11 +347,11 @@ export default function Home() {
       console.log('Dubbing complete!');
       console.log('Processing time:', data.processingTime, 'seconds');
 
-      // Convert base64 audio to blob
-      const audioBytes = Uint8Array.from(atob(data.audioData), c => c.charCodeAt(0));
-      const audioBlob = new Blob([audioBytes], { type: 'audio/mpeg' });
+      // Convert base64 video to blob
+      const videoBytes = Uint8Array.from(atob(data.videoData), c => c.charCodeAt(0));
+      const videoBlob = new Blob([videoBytes], { type: 'video/mp4' });
 
-      setGeneratedAudio(audioBlob);
+      setGeneratedVideo(videoBlob);
       setStep('complete');
 
     } catch (err) {
@@ -883,22 +883,22 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Dubbed Audio */}
-              {generatedAudio && (
+              {/* Dubbed Video */}
+              {generatedVideo && (
                 <div className="border border-green-200 rounded-lg p-4 bg-green-50">
-                  <h3 className="font-semibold mb-2 text-green-900">🎙️ Dubbed Audio</h3>
+                  <h3 className="font-semibold mb-2 text-green-900">🎬 Dubbed Video</h3>
                   <p className="text-xs text-green-700 mb-3">
-                    AI-translated {languages.find(l => l.code === targetLanguage)?.name} audio (video combination coming soon)
+                    Your video with AI-translated {languages.find(l => l.code === targetLanguage)?.name} audio
                   </p>
-                  <audio controls className="w-full rounded mb-4">
-                    <source src={URL.createObjectURL(generatedAudio)} type="audio/mpeg" />
-                  </audio>
+                  <video controls className="w-full rounded mb-4">
+                    <source src={URL.createObjectURL(generatedVideo)} type="video/mp4" />
+                  </video>
                   <a
-                    href={URL.createObjectURL(generatedAudio)}
-                    download={`dubbed-audio-${targetLanguage}.mp3`}
+                    href={URL.createObjectURL(generatedVideo)}
+                    download={`dubbed-video-${targetLanguage}.mp4`}
                     className="inline-block bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 transition"
                   >
-                    Download Dubbed Audio
+                    Download Dubbed Video
                   </a>
                 </div>
               )}

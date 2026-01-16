@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import { writeFile, unlink, readFile } from 'fs/promises';
+import * as path from 'path';
+
+const execAsync = promisify(exec);
+
+// Get ffmpeg path - will be bundled by Vercel
+const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 300; // 5 minutes for processing
 
 export async function POST(request: NextRequest) {
   try {
@@ -144,18 +154,72 @@ export async function POST(request: NextRequest) {
 
     console.log('TTS complete! Audio size:', audioBuffer.byteLength, 'bytes');
 
-    // Convert audio to base64 for response
-    const audioBase64 = Buffer.from(audioBuffer).toString('base64');
+    // Step 3: Download original video
+    console.log('[3/4] Downloading original video...');
+    const videoResponse = await fetch(videoUrl);
+    if (!videoResponse.ok) {
+      throw new Error('Failed to download video from URL');
+    }
+    const videoBuffer = await videoResponse.arrayBuffer();
+    console.log('Video downloaded:', videoBuffer.byteLength, 'bytes');
 
-    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(`=== Translation and Dubbing Complete in ${duration}s ===`);
+    // Step 4: Combine video with dubbed audio using FFmpeg
+    console.log('[4/4] Combining video with dubbed audio...');
+    console.log('FFmpeg path:', ffmpegPath);
 
-    return NextResponse.json({
-      success: true,
-      translatedText,
-      audioData: audioBase64, // Return dubbed audio (video combination temporarily disabled)
-      processingTime: duration,
-    });
+    const timestamp = Date.now();
+    const videoPath = path.join('/tmp', `input-${timestamp}.mp4`);
+    const audioPath = path.join('/tmp', `audio-${timestamp}.mp3`);
+    const outputPath = path.join('/tmp', `output-${timestamp}.mp4`);
+
+    try {
+      // Write files to /tmp
+      await writeFile(videoPath, Buffer.from(videoBuffer));
+      await writeFile(audioPath, Buffer.from(audioBuffer));
+
+      console.log('Running FFmpeg...');
+      // Use FFmpeg to replace audio track
+      const command = `"${ffmpegPath}" -y -i "${videoPath}" -i "${audioPath}" -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest "${outputPath}"`;
+
+      const { stdout, stderr } = await execAsync(command);
+      console.log('FFmpeg stdout:', stdout);
+      if (stderr) console.log('FFmpeg stderr:', stderr);
+
+      // Read the output video
+      const dubbedVideoBuffer = await readFile(outputPath);
+      const videoBase64 = dubbedVideoBuffer.toString('base64');
+
+      console.log('Dubbed video created:', dubbedVideoBuffer.length, 'bytes');
+
+      // Clean up temp files
+      await Promise.all([
+        unlink(videoPath).catch(() => {}),
+        unlink(audioPath).catch(() => {}),
+        unlink(outputPath).catch(() => {}),
+      ]);
+
+      const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`=== Translation and Dubbing Complete in ${duration}s ===`);
+
+      return NextResponse.json({
+        success: true,
+        translatedText,
+        videoData: videoBase64, // Return dubbed video
+        processingTime: duration,
+      });
+
+    } catch (ffmpegError) {
+      console.error('FFmpeg error:', ffmpegError);
+
+      // Clean up on error
+      await Promise.all([
+        unlink(videoPath).catch(() => {}),
+        unlink(audioPath).catch(() => {}),
+        unlink(outputPath).catch(() => {}),
+      ]);
+
+      throw new Error(`Failed to combine video and audio: ${ffmpegError instanceof Error ? ffmpegError.message : 'Unknown error'}`);
+    }
 
   } catch (error) {
     console.error('=== ERROR in translate-and-dub ===');
