@@ -87,6 +87,28 @@ export async function POST(request: NextRequest) {
     console.log('Translation complete!');
     console.log('Translated text:', translatedText.substring(0, 150) + '...');
 
+    // Extract only speaker dialogue for TTS (remove production markers)
+    // Remove lines that start with [ like [SUPER:, [TITLE:, [LOCKUP:, [SCENE:, etc.
+    // Keep only speaker dialogue lines
+    const dialogueOnly = translatedText
+      .split('\n')
+      .filter(line => {
+        const trimmed = line.trim();
+        // Skip empty lines
+        if (!trimmed) return false;
+        // Skip lines that start with [ (production markers)
+        if (trimmed.startsWith('[')) return false;
+        // Skip lines that are just speaker labels without dialogue
+        if (trimmed.match(/^(SPEAKER \d+|VOICEOVER|NARRATOR):?\s*$/i)) return false;
+        // Keep everything else (speaker dialogue)
+        return true;
+      })
+      .join('\n')
+      .trim();
+
+    console.log('Dialogue extracted for TTS:', dialogueOnly.substring(0, 150) + '...');
+    console.log('Dialogue length:', dialogueOnly.length, 'characters (vs full script:', translatedText.length, 'characters)');
+
     // Step 2: Generate speech with ElevenLabs
     console.log('[2/4] Generating speech with ElevenLabs...');
 
@@ -103,7 +125,7 @@ export async function POST(request: NextRequest) {
           'xi-api-key': elevenLabsApiKey,
         },
         body: JSON.stringify({
-          text: translatedText,
+          text: dialogueOnly, // Use dialogue-only text for TTS, not the full formatted script
           model_id: 'eleven_multilingual_v2',
           voice_settings: {
             stability: 0.5,
