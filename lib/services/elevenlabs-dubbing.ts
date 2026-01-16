@@ -1,5 +1,3 @@
-import fetch from 'node-fetch';
-
 export interface DubbingJob {
   dubbing_id: string;
   name: string;
@@ -36,12 +34,8 @@ export class ElevenLabsDubbingService {
     try {
       console.log('Creating ElevenLabs dubbing job...');
 
-      // Convert File to Buffer for node-fetch
-      const videoBuffer = await videoFile.arrayBuffer();
-      const blob = new Blob([videoBuffer], { type: videoFile.type });
-
       const formData = new FormData();
-      formData.append('file', blob, videoFile.name);
+      formData.append('file', videoFile);
       formData.append('target_lang', targetLanguage);
 
       if (sourceLanguage) {
@@ -60,7 +54,7 @@ export class ElevenLabsDubbingService {
         headers: {
           'xi-api-key': this.apiKey,
         },
-        body: formData as any,
+        body: formData,
       });
 
       if (!response.ok) {
