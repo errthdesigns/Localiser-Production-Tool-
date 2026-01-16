@@ -531,7 +531,7 @@ export default function Home() {
               <span className="text-2xl">🎬</span>
             </div>
             <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              VoicePort
+              ScriptShift
             </h1>
           </div>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
