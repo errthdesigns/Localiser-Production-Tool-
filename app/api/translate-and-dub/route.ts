@@ -96,23 +96,34 @@ export async function POST(request: NextRequest) {
       console.log('Translated text:', translatedText.substring(0, 150) + '...');
     }
 
-    // Extract only speaker dialogue for TTS (remove production markers)
-    // Remove lines that start with [ like [SUPER:, [TITLE:, [LOCKUP:, [SCENE:, etc.
-    // Keep only speaker dialogue lines
+    // Extract only dialogue for TTS - remove speaker labels and production markers
     const dialogueOnly = translatedText
       .split('\n')
-      .filter((line: string) => {
+      .map((line: string) => {
         const trimmed = line.trim();
+
         // Skip empty lines
-        if (!trimmed) return false;
-        // Skip lines that start with [ (production markers)
-        if (trimmed.startsWith('[')) return false;
-        // Skip lines that are just speaker labels without dialogue
-        if (trimmed.match(/^(SPEAKER \d+|VOICEOVER|NARRATOR):?\s*$/i)) return false;
-        // Keep everything else (speaker dialogue)
-        return true;
+        if (!trimmed) return '';
+
+        // Skip production markers like [SUPER:, [TITLE:, etc.
+        if (trimmed.startsWith('[')) return '';
+
+        // Remove speaker labels (SPEAKER 1:, SPEAKER 2:, etc.) and keep only dialogue
+        const speakerMatch = trimmed.match(/^(SPEAKER [A-Z0-9]+|VOICEOVER|NARRATOR):\s*(.+)$/i);
+        if (speakerMatch) {
+          return speakerMatch[2]; // Return only the dialogue part after "SPEAKER X:"
+        }
+
+        // Skip lines that are JUST speaker labels with no dialogue
+        if (trimmed.match(/^(SPEAKER [A-Z0-9]+|VOICEOVER|NARRATOR):?\s*$/i)) {
+          return '';
+        }
+
+        // Keep any other text (dialogue without labels)
+        return trimmed;
       })
-      .join('\n')
+      .filter(line => line.length > 0) // Remove empty strings
+      .join(' ') // Join with spaces for natural speech flow
       .trim();
 
     console.log('Dialogue extracted for TTS:', dialogueOnly.substring(0, 150) + '...');
