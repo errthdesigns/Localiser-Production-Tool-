@@ -36,8 +36,20 @@ export async function POST(request: NextRequest) {
     console.log('[1/2] Transcribing audio with Whisper...');
     const openai = new OpenAI({ apiKey: openaiApiKey });
 
+    // Fetch the video and convert to a File object with proper name
+    const videoResponse = await fetch(videoUrl);
+    const videoBlob = await videoResponse.blob();
+
+    // OpenAI requires a File object with a name property
+    // Extract filename from URL or use default
+    const urlParts = videoUrl.split('/');
+    const filename = urlParts[urlParts.length - 1] || 'video.mp4';
+
+    // Create a File object from the blob
+    const videoFile = new File([videoBlob], filename, { type: videoBlob.type });
+
     const transcription = await openai.audio.transcriptions.create({
-      file: await fetch(videoUrl).then(res => res.blob() as any),
+      file: videoFile,
       model: 'whisper-1',
       language: sourceLanguage || undefined,
     });
