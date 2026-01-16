@@ -189,18 +189,24 @@ export async function POST(request: NextRequest) {
       await writeFile(audioPath, Buffer.from(audioBuffer));
 
       console.log('Running FFmpeg...');
+      console.log('Input video:', videoPath, 'exists');
+      console.log('Input audio:', audioPath, 'exists');
+
       // Use FFmpeg to replace audio track
       const command = `"${ffmpegPath}" -y -i "${videoPath}" -i "${audioPath}" -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest "${outputPath}"`;
+      console.log('FFmpeg command:', command);
 
       const { stdout, stderr } = await execAsync(command);
       console.log('FFmpeg stdout:', stdout);
       if (stderr) console.log('FFmpeg stderr:', stderr);
+      console.log('FFmpeg execution complete, output should be at:', outputPath);
 
       // Read the output video
       const dubbedVideoBuffer = await readFile(outputPath);
-      const videoBase64 = dubbedVideoBuffer.toString('base64');
+      console.log('Dubbed video file read successfully:', dubbedVideoBuffer.length, 'bytes');
 
-      console.log('Dubbed video created:', dubbedVideoBuffer.length, 'bytes');
+      const videoBase64 = dubbedVideoBuffer.toString('base64');
+      console.log('Dubbed video base64 encoded:', videoBase64.length, 'characters');
 
       // Clean up temp files
       await Promise.all([

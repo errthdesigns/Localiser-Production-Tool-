@@ -347,9 +347,18 @@ export default function Home() {
       console.log('Dubbing complete!');
       console.log('Processing time:', data.processingTime, 'seconds');
 
+      // Verify videoData exists in response
+      if (!data.videoData) {
+        throw new Error('API did not return video data. Check server logs for FFmpeg errors.');
+      }
+
+      console.log('Video data received, size:', data.videoData.length, 'characters (base64)');
+
       // Convert base64 video to blob
       const videoBytes = Uint8Array.from(atob(data.videoData), c => c.charCodeAt(0));
       const videoBlob = new Blob([videoBytes], { type: 'video/mp4' });
+
+      console.log('Video blob created, size:', videoBlob.size, 'bytes');
 
       setGeneratedVideo(videoBlob);
       setStep('complete');
