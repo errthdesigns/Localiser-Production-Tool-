@@ -23,6 +23,7 @@ export default function Home() {
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [targetLanguage, setTargetLanguage] = useState('es');
   const [useDubbingStudio, setUseDubbingStudio] = useState(true); // Default to dubbing studio
+  const [useFastMode, setUseFastMode] = useState(true); // Default to fast mode (1-2 min)
   const [dubbingId, setDubbingId] = useState<string>('');
   const [voiceRecommendations, setVoiceRecommendations] = useState<VoiceRecommendations | null>(null);
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>('');
@@ -31,6 +32,8 @@ export default function Home() {
   const [progress, setProgress] = useState('');
   const [generatedAudio, setGeneratedAudio] = useState<Blob | null>(null);
   const [generatedVideo, setGeneratedVideo] = useState<Blob | null>(null);
+  const [originalText, setOriginalText] = useState<string>('');
+  const [translatedText, setTranslatedText] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const languages = [
@@ -194,6 +197,84 @@ export default function Home() {
     } catch (err) {
       console.error('Dubbing error:', err);
       setError(err instanceof Error ? err.message : 'Dubbing failed');
+    } finally {
+      setIsLoading(false);
+      setProgress('');
+    }
+  };
+
+  const fastDubVideo = async () => {
+    if (!videoFile) return;
+
+    setIsLoading(true);
+    setError('');
+    setProgress('Uploading video for fast dubbing...');
+    setStep('processing');
+
+    try {
+      const fileSizeMB = videoFile.size / 1024 / 1024;
+
+      // Fast dubbing has 25MB limit (OpenAI Whisper limit)
+      if (fileSizeMB > 25) {
+        setError(`Video file is ${fileSizeMB.toFixed(2)}MB. Maximum file size for fast mode is 25MB.`);
+        setIsLoading(false);
+        setProgress('');
+        setStep('upload');
+        return;
+      }
+
+      // Upload to Vercel Blob
+      const { upload } = await import('@vercel/blob/client');
+      const timestamp = Date.now();
+      const randomStr = Math.random().toString(36).substring(2, 8);
+      const fileExt = videoFile.name.split('.').pop();
+      const baseName = videoFile.name.replace(`.${fileExt}`, '');
+      const uniqueFileName = `${baseName}-${timestamp}-${randomStr}.${fileExt}`;
+
+      setProgress(`Uploading ${fileSizeMB.toFixed(1)}MB video...`);
+      const blob = await upload(uniqueFileName, videoFile, {
+        access: 'public',
+        handleUploadUrl: '/api/upload',
+      });
+
+      console.log('Video uploaded to blob:', blob.url);
+
+      // Call fast dubbing API
+      setProgress('🚀 Transcribing audio with AI...');
+      const response = await fetch('/api/fast-dub', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoUrl: blob.url,
+          targetLanguage: targetLanguage,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Fast dubbing failed');
+      }
+
+      const data = await response.json();
+
+      console.log('Fast dubbing complete!');
+      console.log('Processing time:', data.processingTime, 'seconds');
+      console.log('Original:', data.originalText.substring(0, 100));
+      console.log('Translated:', data.translatedText.substring(0, 100));
+
+      // Convert base64 audio to blob
+      const audioBytes = Uint8Array.from(atob(data.audioData), c => c.charCodeAt(0));
+      const audioBlob = new Blob([audioBytes], { type: 'audio/mpeg' });
+
+      setGeneratedAudio(audioBlob);
+      setOriginalText(data.originalText);
+      setTranslatedText(data.translatedText);
+      setStep('complete');
+
+    } catch (err) {
+      console.error('Fast dubbing error:', err);
+      setError(err instanceof Error ? err.message : 'Fast dubbing failed');
+      setStep('upload');
     } finally {
       setIsLoading(false);
       setProgress('');
@@ -454,15 +535,16 @@ export default function Home() {
               </select>
             </div>
 
-            <div className="mt-6 bg-gray-50 p-4 rounded-lg">
+            <div className="mt-6 bg-gray-50 p-4 rounded-lg space-y-4">
+              {/* Auto Dubbing Toggle */}
               <div className="flex items-center justify-between">
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
-                    Dubbing Method
+                    Auto Dubbing
                   </label>
                   <p className="text-xs text-gray-500 mt-1">
                     {useDubbingStudio
-                      ? 'Automatic dubbing with lip-sync (recommended)'
+                      ? 'Automatic dubbing with AI (recommended)'
                       : 'Manual voice selection and audio generation'}
                   </p>
                 </div>
@@ -480,26 +562,71 @@ export default function Home() {
                   />
                 </button>
               </div>
+
+              {/* Fast Mode Toggle (only shown when Auto Dubbing is ON) */}
+              {useDubbingStudio && (
+                <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      ⚡ Fast Mode
+                    </label>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {useFastMode
+                        ? '1-2 min processing (audio only, no lip-sync)'
+                        : '5-30 min processing (full dubbing with lip-sync)'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setUseFastMode(!useFastMode)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      useFastMode ? 'bg-green-600' : 'bg-orange-500'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        useFastMode ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="mt-6">
-              {useDubbingStudio && (
+              {useDubbingStudio && !useFastMode && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-3">
                   <p className="text-xs text-yellow-800">
-                    ⏱️ <strong>Please note:</strong> ElevenLabs dubbing typically takes 5-15 minutes for short videos,
-                    and up to 20-30 minutes for longer or complex videos. The process includes audio extraction,
+                    ⏱️ <strong>Please note:</strong> Full dubbing mode takes 5-15 minutes for short videos,
+                    and up to 20-30 minutes for longer videos. Includes audio extraction,
                     translation, voice synthesis, and lip-sync alignment.
                   </p>
                 </div>
               )}
+              {useDubbingStudio && useFastMode && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-3">
+                  <p className="text-xs text-green-800">
+                    ⚡ <strong>Fast Mode:</strong> Completes in 1-2 minutes! Uses OpenAI Whisper + GPT-4 + ElevenLabs TTS.
+                    Audio-only dubbing (no lip-sync). Max file size: 25MB.
+                  </p>
+                </div>
+              )}
               <button
-                onClick={useDubbingStudio ? dubVideoWithStudio : analyzeVoice}
+                onClick={
+                  useDubbingStudio
+                    ? (useFastMode ? fastDubVideo : dubVideoWithStudio)
+                    : analyzeVoice
+                }
                 disabled={!videoFile || isLoading}
                 className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition"
               >
                 {isLoading
-                  ? (useDubbingStudio ? 'Dubbing in progress...' : 'Analyzing...')
-                  : (useDubbingStudio ? 'Start Auto Dubbing (5-30 min)' : 'Analyze Video & Find Voices')}
+                  ? (useDubbingStudio
+                      ? (useFastMode ? '⚡ Fast dubbing...' : 'Dubbing in progress...')
+                      : 'Analyzing...')
+                  : (useDubbingStudio
+                      ? (useFastMode ? '⚡ Start Fast Dubbing (1-2 min)' : 'Start Full Dubbing (5-30 min)')
+                      : 'Analyze Video & Find Voices')}
               </button>
             </div>
           </div>
@@ -585,6 +712,47 @@ export default function Home() {
             </h2>
 
             <div className="space-y-4">
+              {/* Show transcription and translation for fast mode */}
+              {(originalText || translatedText) && (
+                <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                  <h3 className="font-semibold mb-3">Transcription & Translation</h3>
+                  <div className="space-y-3">
+                    {originalText && (
+                      <div>
+                        <p className="text-xs font-medium text-gray-600 mb-1">Original Text:</p>
+                        <p className="text-sm text-gray-800 bg-white p-3 rounded border border-gray-200">
+                          {originalText}
+                        </p>
+                      </div>
+                    )}
+                    {translatedText && (
+                      <div>
+                        <p className="text-xs font-medium text-gray-600 mb-1">Translated Text:</p>
+                        <p className="text-sm text-gray-800 bg-white p-3 rounded border border-gray-200">
+                          {translatedText}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Video Preview with Dubbed Audio */}
+              {videoFile && generatedAudio && (
+                <div className="border border-green-200 rounded-lg p-4 bg-green-50">
+                  <h3 className="font-semibold mb-2 text-green-900">🎬 Video with Dubbed Audio</h3>
+                  <p className="text-xs text-green-700 mb-3">
+                    Original video playing with AI-generated dubbed audio
+                  </p>
+                  <video controls className="w-full rounded mb-2" muted>
+                    <source src={URL.createObjectURL(videoFile)} type="video/mp4" />
+                  </video>
+                  <audio controls className="w-full">
+                    <source src={URL.createObjectURL(generatedAudio)} type="audio/mpeg" />
+                  </audio>
+                </div>
+              )}
+
               {generatedAudio && (
                 <div className="border border-gray-200 rounded-lg p-4">
                   <h3 className="font-semibold mb-2">Generated Audio</h3>

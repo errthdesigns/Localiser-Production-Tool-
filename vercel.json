@@ -17,6 +17,9 @@
     },
     "app/api/dub-video/download/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/fast-dub/route.ts": {
+      "maxDuration": 300
     }
   }
 }
