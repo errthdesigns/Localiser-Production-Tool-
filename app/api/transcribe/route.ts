@@ -71,95 +71,52 @@ export async function POST(request: NextRequest) {
     // Step 2: Format with GPT-4 (add speaker labels and production markers)
     console.log('[2/2] Formatting script with GPT-4...');
 
-    const scriptPrompt = `You are a professional video script formatter. Format the following video transcript into a production-ready script with:
+    const scriptPrompt = `You are a professional transcript formatter. Format the following video transcript with speaker labels.
 
-1. **SPEAKER LABELS**: Analyze the dialogue carefully and assign speaker labels (SPEAKER 1, SPEAKER 2, etc.) based on:
+RULES:
+
+1. **SPEAKER DETECTION**: Analyze the dialogue carefully and assign speaker labels (SPEAKER 1, SPEAKER 2, etc.) based on:
    - Conversation flow and turn-taking
    - Distinct speaking styles and tones
    - Questions and responses between different people
-   - Role identifiers in dialogue
-   - Changes in speaking pace or tone that indicate a different person
+   - Clear dialogue exchanges
+   - Be conservative - only add a new speaker when the dialogue clearly indicates a different person
 
-2. **PRODUCTION MARKERS**:
-   - Add [TITLE: "text"] for opening title cards
-   - Add [SUPER: "text"] for on-screen text overlays (infer from dialogue context)
-   - Add [LOCKUP: Brand Name] for logos and brand elements
-   - Add [SCENE: description] for scene changes or context
-   - Add [PAUSE], [MUSIC], [SFX: description] where appropriate
-
-3. **CAPTURE ALL ON-SCREEN TEXT** (THIS IS CRITICAL):
-   - Look for brand names, product names, and logos
-   - Call-to-action text (e.g., "TRY NOW", "BUY NOW", "SHOP TODAY")
-   - Taglines and slogans (e.g., "CLEAN THE [BRAND] WAY")
-   - Product benefits text
-   - Website URLs, discount codes, social media handles
-   - Price information
-   - ANY text overlay that appears on screen
-   - Format as: [SUPER: "exact text as shown"]
-
-4. **TITLES/GRAPHICS**:
-   - Opening title cards: [TITLE: "text"]
-   - Brand lockups and logos: [LOCKUP: Brand Name Logo]
-   - Product graphics: [GRAPHIC: description]
-
-5. **SCENE DESCRIPTIONS**:
-   - Add context: [SCENE: Product demonstration in bathroom]
-   - Note scene changes: [SCENE: Close-up of product]
-   - Note character actions: [SCENE: SPEAKER 2 looks frustrated]
-
-6. **TIMING NOTES**:
-   - Music cues: [MUSIC: Upbeat background]
-   - Sound effects: [SFX: description]
-   - Pauses: [PAUSE]
+2. **FORMAT**: Use clean, simple formatting:
+   - Each speaker on their own line
+   - Format: "SPEAKER 1: [dialogue]"
+   - Keep natural paragraph breaks between different speakers
+   - Do NOT add any production markers like [SUPER], [TITLE], [LOCKUP], [SCENE]
+   - Do NOT try to infer visual elements - you only have audio
+   - Only include the actual spoken words
 
 EXAMPLE FORMAT:
-[TITLE: "Bref Power Active"]
-
-[SCENE: Bathroom, two people enter]
 
 SPEAKER 1:
 That's a good product!
-
-[SUPER: "TRY NOW"]
 
 SPEAKER 2:
 You don't actually think you're a toilet cleaner, do you?
 
 SPEAKER 1:
-Unlike you, I immerse myself in crafting character.
+Unlike you, I immerse myself in crafting character. Called method acting.
 
-[SCENE: Product close-up on toilet]
-
-SPEAKER 3:
-It's an ad, man!
-
-[SUPER: "CLEAN THE Bref WAY"]
-
-[LOCKUP: Bref logo]
+SPEAKER 2:
+Yeah? Why don't you method act me an espresso, huh?
 
 ---
-
-IMPORTANT:
-- Infer on-screen text from context (brand names mentioned, calls-to-action like "try it", product names)
-- Add placeholder [SUPER: "text"] where on-screen text would logically appear
-- Mark all brand mentions and logos as [LOCKUP: Brand Name]
-
-For example:
-- If someone says "Bref", add [LOCKUP: Bref logo] nearby
-- If dialogue suggests urgency, add [SUPER: "TRY NOW"] or similar
-- Product names mentioned should have [SUPER: "Product Name"]
 
 TRANSCRIPT:
 ${rawTranscript}
 
-Return ONLY the formatted script with speaker labels and production markers.`;
+Return ONLY the formatted dialogue with speaker labels. NO production markers, NO scene descriptions, NO inferred visual elements.`;
 
     const scriptResponse = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
         {
           role: 'system',
-          content: 'You are a professional video script formatter. Format transcripts into production-ready scripts with speaker labels, supers, titles, lockups, and scene descriptions.'
+          content: 'You are a professional transcript formatter. Format audio transcripts with accurate speaker labels. Only include spoken dialogue - no visual elements.'
         },
         {
           role: 'user',
