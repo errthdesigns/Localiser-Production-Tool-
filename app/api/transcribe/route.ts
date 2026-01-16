@@ -44,32 +44,68 @@ export async function POST(request: NextRequest) {
     const genAI = new GoogleGenerativeAI(geminiApiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
 
-    const prompt = `Watch this video carefully and transcribe all spoken dialogue with accurate speaker attribution.
+    const prompt = `You are a professional video transcriber with visual speaker detection capabilities. Watch this video VERY CAREFULLY and create an accurate transcript with proper speaker attribution.
 
-CRITICAL INSTRUCTIONS:
+CRITICAL INSTRUCTIONS FOR ACCURACY:
 
-1. **WATCH THE VIDEO** - Observe who is speaking at each moment by watching their mouth movements and visual cues
-2. **ACCURATE SPEAKER DETECTION** - Assign speakers (SPEAKER 1, SPEAKER 2, etc.) based on VISUAL observation of who is actually talking
-3. **TRANSCRIBE ALL DIALOGUE** - Write down everything that is spoken
-4. **CLEAN FORMAT** - Use simple formatting:
-   - Each speaker on their own line
-   - Format: "SPEAKER 1: [dialogue]"
-   - Natural paragraph breaks between speakers
-   - NO production markers
-   - ONLY spoken words
+1. **VISUAL SPEAKER DETECTION**:
+   - Watch the video frame-by-frame
+   - Identify EXACTLY who is speaking by observing:
+     * Mouth movements and lip sync
+     * Face visibility and position
+     * Body language and gestures
+   - Only change speaker labels when you VISUALLY CONFIRM a different person is speaking
+   - If multiple people speak, assign them as SPEAKER 1, SPEAKER 2, SPEAKER 3, etc. in order of first appearance
 
-EXAMPLE OUTPUT:
+2. **TRANSCRIPTION ACCURACY**:
+   - Listen carefully and transcribe EXACTLY what is spoken
+   - Do NOT guess or paraphrase - use the actual words
+   - Keep complete sentences together - do NOT break them up
+   - Keep all of one speaker's continuous dialogue together before switching speakers
+   - Maintain natural conversation flow
+
+3. **SPEAKER ATTRIBUTION RULES**:
+   - SPEAKER 1: The first person who speaks in the video
+   - SPEAKER 2: The second person who speaks in the video
+   - SPEAKER 3: The third person who speaks (if present)
+   - Use consistent labels throughout - don't renumber speakers
+   - Group continuous dialogue from the same speaker together
+
+4. **OUTPUT FORMAT**:
+   - Use this exact format:
+
+   SPEAKER 1:
+   [Their complete dialogue here, can be multiple sentences]
+
+   SPEAKER 2:
+   [Their complete dialogue here, can be multiple sentences]
+
+   SPEAKER 1:
+   [Their next dialogue when they speak again]
+
+5. **WHAT TO AVOID**:
+   - Do NOT split up one person's continuous speech into multiple sections
+   - Do NOT mix dialogue from different speakers together
+   - Do NOT add [SUPER], [TITLE], [LOCKUP] or any production markers
+   - Do NOT guess at words you can't hear clearly - transcribe accurately
+
+EXAMPLE OF CORRECT FORMAT:
 
 SPEAKER 1:
 That's a good product!
 
 SPEAKER 2:
-You don't actually think you're a toilet cleaner, do you?
+Oh! Oh! I'm obsolete! I'm obsolete! Nice work, Metal Man! Metal Man.
 
 SPEAKER 1:
-Unlike you, I immerse myself in crafting character.
+Did you see that breath? This thing cleans toilets faster than I can process data. It's gonna replace me!
 
-Return ONLY the dialogue with accurate speaker labels based on visual observation.`;
+SPEAKER 3:
+It's an ad, man. It's an ad. Make-believe.
+
+---
+
+Now watch the video carefully and create an accurate transcript with proper visual speaker attribution.`;
 
     const result = await model.generateContent([
       {
