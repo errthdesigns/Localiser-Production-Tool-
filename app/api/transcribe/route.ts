@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
+import OpenAI, { toFile } from 'openai';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -36,20 +36,30 @@ export async function POST(request: NextRequest) {
     console.log('[1/2] Transcribing audio with Whisper...');
     const openai = new OpenAI({ apiKey: openaiApiKey });
 
-    // Fetch the video and convert to a File object with proper name
+    // Fetch the video and convert to buffer for Node.js environment
     const videoResponse = await fetch(videoUrl);
-    const videoBlob = await videoResponse.blob();
+    const arrayBuffer = await videoResponse.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
 
-    // OpenAI requires a File object with a name property
     // Extract filename from URL or use default
     const urlParts = videoUrl.split('/');
-    const filename = urlParts[urlParts.length - 1] || 'video.mp4';
+    const urlFilename = urlParts[urlParts.length - 1] || 'video.mp4';
 
-    // Create a File object from the blob
-    const videoFile = new File([videoBlob], filename, { type: videoBlob.type });
+    // Decode URL-encoded filename and ensure it has proper extension
+    const decodedFilename = decodeURIComponent(urlFilename);
+    const filename = decodedFilename.endsWith('.mp4') || decodedFilename.endsWith('.mov') || decodedFilename.endsWith('.avi')
+      ? decodedFilename
+      : `${decodedFilename}.mp4`;
+
+    console.log('Transcribing file:', filename);
+
+    // Use OpenAI's toFile helper which properly handles Node.js file uploads
+    const fileForUpload = await toFile(buffer, filename, {
+      type: videoResponse.headers.get('content-type') || 'video/mp4'
+    });
 
     const transcription = await openai.audio.transcriptions.create({
-      file: videoFile,
+      file: fileForUpload,
       model: 'whisper-1',
       language: sourceLanguage || undefined,
     });
