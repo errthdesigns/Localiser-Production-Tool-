@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
     // Keep only speaker dialogue lines
     const dialogueOnly = translatedText
       .split('\n')
-      .filter(line => {
+      .filter((line: string) => {
         const trimmed = line.trim();
         // Skip empty lines
         if (!trimmed) return false;

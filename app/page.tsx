@@ -950,13 +950,6 @@ export default function Home() {
                     Download Dubbed Video
                   </a>
                 </div>
-              ) : (
-                <div className="border border-blue-200 bg-blue-50 rounded-lg p-4">
-                  <h3 className="font-semibold mb-2 text-blue-900">📹 Video Lip-Sync (Coming Soon)</h3>
-                  <p className="text-sm text-blue-700">
-                    AI-powered lip-sync video generation will be available once you add your VEED_API_KEY to the environment variables.
-                  </p>
-                </div>
               )}
             </div>
 
