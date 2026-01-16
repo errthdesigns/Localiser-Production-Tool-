@@ -675,38 +675,49 @@ export default function Home() {
         {/* Step 2: Review Transcript */}
         {step === 'review-transcript' && (
           <div className="bg-white rounded-lg shadow-lg p-8">
-            <h2 className="text-2xl font-semibold mb-4">📝 Review & Edit Transcript</h2>
+            <h2 className="text-2xl font-semibold mb-4">📝 Review & Edit Video Script</h2>
 
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
               <p className="text-sm text-blue-800">
                 <strong>Detected Language:</strong> {detectedLanguage.toUpperCase()} → <strong>Target:</strong> {languages.find(l => l.code === targetLanguage)?.name}
               </p>
               <p className="text-xs text-blue-600 mt-2">
-                ✏️ Review the transcript below and make any necessary edits before translation. This is your chance to fix any transcription errors!
+                ✏️ Review the video script below. Edit speaker labels, on-screen text (SUPERS), titles, and dialogue before translation.
               </p>
             </div>
 
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Original Transcript
-                <span className="text-gray-500 font-normal ml-2">({editableTranscript.length} characters)</span>
-              </label>
+              <div className="flex justify-between items-center mb-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Video Production Script
+                  <span className="text-gray-500 font-normal ml-2">({editableTranscript.length} characters)</span>
+                </label>
+                <div className="flex gap-2 text-xs">
+                  <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded">[TITLE]</span>
+                  <span className="bg-green-100 text-green-800 px-2 py-1 rounded">[SUPER]</span>
+                  <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded">[LOCKUP]</span>
+                  <span className="bg-orange-100 text-orange-800 px-2 py-1 rounded">[SCENE]</span>
+                </div>
+              </div>
               <textarea
                 value={editableTranscript}
                 onChange={(e) => setEditableTranscript(e.target.value)}
-                rows={12}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
-                placeholder="Edit transcript here..."
+                rows={16}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm leading-relaxed bg-gray-50"
+                placeholder="Edit script here..."
+                style={{ lineHeight: '1.6' }}
               />
             </div>
 
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
-              <h3 className="text-sm font-semibold text-gray-700 mb-2">💡 Tips:</h3>
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">📋 Script Format Guide:</h3>
               <ul className="text-xs text-gray-600 space-y-1">
-                <li>• Fix any words that were transcribed incorrectly</li>
-                <li>• Add punctuation for better translation quality</li>
-                <li>• Remove filler words (um, uh, etc.) if desired</li>
-                <li>• Ensure proper capitalization and formatting</li>
+                <li>• <strong>[TITLE: "text"]</strong> - Title cards and opening graphics</li>
+                <li>• <strong>[SUPER: "text"]</strong> - On-screen text overlays</li>
+                <li>• <strong>[LOCKUP: description]</strong> - Brand logos and lockups</li>
+                <li>• <strong>[SCENE: description]</strong> - Scene changes and context</li>
+                <li>• <strong>SPEAKER NAME:</strong> - Speaker attribution (VOICEOVER, NARRATOR, etc.)</li>
+                <li>• <strong>[PAUSE], [MUSIC], [SFX: description]</strong> - Timing and audio cues</li>
               </ul>
             </div>
 

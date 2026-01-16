@@ -74,11 +74,71 @@ export async function POST(request: NextRequest) {
     const duration = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(`=== Transcription Complete in ${duration}s ===`);
     console.log('Detected language:', data.language);
-    console.log('Transcription:', data.text.substring(0, 150) + '...');
+    console.log('Raw transcription:', data.text.substring(0, 150) + '...');
+
+    // Step 2: Format transcript into proper video script
+    console.log('Formatting transcript into video script...');
+    const openai = new OpenAI({ apiKey: openaiApiKey });
+
+    const scriptPrompt = `You are a professional video script formatter. Convert the following raw transcript into a properly formatted video production script.
+
+FORMAT REQUIREMENTS:
+1. **SPEAKER LABELS**: Identify different speakers as SPEAKER 1, SPEAKER 2, etc., or use character names if identifiable (VOICEOVER, NARRATOR, etc.)
+2. **ON-SCREEN TEXT**: Mark any text that appears on screen with [SUPER: "text here"]
+3. **TITLES/GRAPHICS**: Mark title cards and graphics with [TITLE: "text"] or [GRAPHIC: description]
+4. **LOCKUPS**: Mark brand logos and lockups with [LOCKUP: description]
+5. **SCENE DESCRIPTIONS**: Add brief scene descriptions in [SCENE: description] when context changes
+6. **TIMING NOTES**: Add timing cues like [PAUSE], [MUSIC], [SFX: description] where relevant
+
+EXAMPLE FORMAT:
+[TITLE: "Product Name"]
+
+[SCENE: Product demonstration]
+
+VOICEOVER:
+This is the best product you'll ever use.
+
+[SUPER: "Available Now"]
+
+SPEAKER 1:
+I can't believe how well this works!
+
+[SFX: Success sound]
+
+[LOCKUP: Company logo with tagline]
+
+---
+
+Now format this raw transcript:
+
+${data.text}
+
+Return ONLY the formatted script, no additional commentary.`;
+
+    const scriptResponse = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a professional video script formatter. Format transcripts into production-ready scripts with speaker labels, supers, titles, lockups, and scene descriptions.'
+        },
+        {
+          role: 'user',
+          content: scriptPrompt
+        }
+      ],
+      temperature: 0.3,
+    });
+
+    const formattedScript = scriptResponse.choices[0].message.content || data.text;
+
+    console.log('Script formatted successfully!');
+    console.log('Formatted script preview:', formattedScript.substring(0, 200) + '...');
 
     return NextResponse.json({
       success: true,
-      text: data.text,
+      text: formattedScript,
+      rawText: data.text,
       language: data.language,
       segments: data.segments || [],
       processingTime: duration,
