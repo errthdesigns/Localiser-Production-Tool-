@@ -84,6 +84,7 @@ export default function Home() {
       const blob = await upload(videoFile.name, videoFile, {
         access: 'public',
         handleUploadUrl: '/api/upload',
+        addRandomSuffix: true, // Generate unique filename for each upload
       });
 
       console.log('Video uploaded to blob:', blob.url);
@@ -149,6 +150,7 @@ export default function Home() {
       const blob = await upload(videoFile.name, videoFile, {
         access: 'public',
         handleUploadUrl: '/api/upload',
+        addRandomSuffix: true, // Generate unique filename for each upload
       });
 
       console.log('Video uploaded to blob:', blob.url);
