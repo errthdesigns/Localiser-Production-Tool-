@@ -53,9 +53,13 @@ export async function POST(request: NextRequest) {
 
     console.log('Transcribing file:', filename);
 
-    // Use OpenAI's toFile helper which properly handles Node.js file uploads
-    const fileForUpload = await toFile(buffer, filename, {
-      type: videoResponse.headers.get('content-type') || 'video/mp4'
+    // Use OpenAI's toFile helper - simplified call
+    const fileForUpload = await toFile(buffer, filename);
+
+    console.log('File prepared for upload:', {
+      name: filename,
+      size: buffer.length,
+      type: 'buffer'
     });
 
     const transcription = await openai.audio.transcriptions.create({
