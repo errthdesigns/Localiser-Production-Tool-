@@ -13,6 +13,7 @@
     "@ffmpeg/util": "^0.12.2",
     "@google/generative-ai": "^0.21.0",
     "@vercel/blob": "^2.0.0",
+    "assemblyai": "^4.22.1",
     "lucide-react": "^0.263.1",
     "next": "^14.2.0",
     "openai": "^4.20.1",

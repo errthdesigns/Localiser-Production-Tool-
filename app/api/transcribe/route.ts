@@ -1,18 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { AssemblyAI } from 'assemblyai';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 300; // 5 minutes for transcription
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('=== Starting Video Analysis with Gemini ===');
+    console.log('=== Starting Transcription with AssemblyAI ===');
 
-    const geminiApiKey = process.env.GEMINI_API_KEY;
+    const assemblyaiApiKey = process.env.ASSEMBLYAI_API_KEY;
 
-    if (!geminiApiKey) {
+    if (!assemblyaiApiKey) {
       return NextResponse.json(
-        { error: 'Gemini API key not configured' },
+        { error: 'AssemblyAI API key not configured' },
         { status: 500 }
       );
     }
@@ -27,106 +28,69 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('Analyzing video with Gemini 2.0 Flash...');
+    console.log('Transcribing video with AssemblyAI (professional speaker diarization)...');
     const startTime = Date.now();
 
-    // Step 1: Download video
-    console.log('[1/2] Downloading video...');
-    const videoResponse = await fetch(videoUrl);
-    const arrayBuffer = await videoResponse.arrayBuffer();
-    const videoBase64 = Buffer.from(arrayBuffer).toString('base64');
+    // Initialize AssemblyAI client
+    const client = new AssemblyAI({
+      apiKey: assemblyaiApiKey,
+    });
 
-    console.log('Video downloaded, size:', arrayBuffer.byteLength, 'bytes');
+    console.log('Submitting transcription job with speaker diarization...');
 
-    // Step 2: Analyze with Gemini (video understanding + speaker detection)
-    console.log('[2/2] Analyzing video with Gemini for transcription and speaker detection...');
+    // Submit transcription with speaker diarization
+    const transcript = await client.transcripts.transcribe({
+      audio: videoUrl,
+      speaker_labels: true, // Enable speaker diarization
+      language_code: sourceLanguage || 'en',
+    });
 
-    const genAI = new GoogleGenerativeAI(geminiApiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
-
-    const prompt = `You are a professional video transcriber with visual speaker detection capabilities. Watch this video VERY CAREFULLY and create an accurate transcript with proper speaker attribution.
-
-CRITICAL INSTRUCTIONS FOR ACCURACY:
-
-1. **VISUAL SPEAKER DETECTION**:
-   - Watch the video frame-by-frame
-   - Identify EXACTLY who is speaking by observing:
-     * Mouth movements and lip sync
-     * Face visibility and position
-     * Body language and gestures
-   - Only change speaker labels when you VISUALLY CONFIRM a different person is speaking
-   - If multiple people speak, assign them as SPEAKER 1, SPEAKER 2, SPEAKER 3, etc. in order of first appearance
-
-2. **TRANSCRIPTION ACCURACY**:
-   - Listen carefully and transcribe EXACTLY what is spoken
-   - Do NOT guess or paraphrase - use the actual words
-   - Keep complete sentences together - do NOT break them up
-   - Keep all of one speaker's continuous dialogue together before switching speakers
-   - Maintain natural conversation flow
-
-3. **SPEAKER ATTRIBUTION RULES**:
-   - SPEAKER 1: The first person who speaks in the video
-   - SPEAKER 2: The second person who speaks in the video
-   - SPEAKER 3: The third person who speaks (if present)
-   - Use consistent labels throughout - don't renumber speakers
-   - Group continuous dialogue from the same speaker together
-
-4. **OUTPUT FORMAT**:
-   - Use this exact format:
-
-   SPEAKER 1:
-   [Their complete dialogue here, can be multiple sentences]
-
-   SPEAKER 2:
-   [Their complete dialogue here, can be multiple sentences]
-
-   SPEAKER 1:
-   [Their next dialogue when they speak again]
-
-5. **WHAT TO AVOID**:
-   - Do NOT split up one person's continuous speech into multiple sections
-   - Do NOT mix dialogue from different speakers together
-   - Do NOT add [SUPER], [TITLE], [LOCKUP] or any production markers
-   - Do NOT guess at words you can't hear clearly - transcribe accurately
-
-EXAMPLE OF CORRECT FORMAT:
-
-SPEAKER 1:
-That's a good product!
-
-SPEAKER 2:
-Oh! Oh! I'm obsolete! I'm obsolete! Nice work, Metal Man! Metal Man.
-
-SPEAKER 1:
-Did you see that breath? This thing cleans toilets faster than I can process data. It's gonna replace me!
-
-SPEAKER 3:
-It's an ad, man. It's an ad. Make-believe.
-
----
-
-Now watch the video carefully and create an accurate transcript with proper visual speaker attribution.`;
-
-    const result = await model.generateContent([
-      {
-        inlineData: {
-          mimeType: 'video/mp4',
-          data: videoBase64
-        }
-      },
-      { text: prompt }
-    ]);
-
-    const formattedScript = result.response.text();
+    if (transcript.status === 'error') {
+      throw new Error(`Transcription failed: ${transcript.error}`);
+    }
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(`=== Video Analysis Complete in ${duration}s ===`);
+    console.log(`=== Transcription Complete in ${duration}s ===`);
+
+    // Format the transcript with speaker labels
+    let formattedScript = '';
+    let currentSpeaker = '';
+    let currentText = '';
+
+    if (transcript.utterances && transcript.utterances.length > 0) {
+      console.log('Processing', transcript.utterances.length, 'utterances');
+
+      for (const utterance of transcript.utterances) {
+        const speaker = `SPEAKER ${utterance.speaker}`;
+
+        if (speaker !== currentSpeaker) {
+          // New speaker - flush previous speaker's text
+          if (currentText.trim()) {
+            formattedScript += `${currentSpeaker}:\n${currentText.trim()}\n\n`;
+          }
+          currentSpeaker = speaker;
+          currentText = utterance.text + ' ';
+        } else {
+          // Same speaker - accumulate text
+          currentText += utterance.text + ' ';
+        }
+      }
+
+      // Flush final speaker
+      if (currentText.trim()) {
+        formattedScript += `${currentSpeaker}:\n${currentText.trim()}\n`;
+      }
+    } else {
+      // Fallback to words if no utterances
+      formattedScript = transcript.text || '';
+    }
+
     console.log('Transcript preview:', formattedScript.substring(0, 200) + '...');
 
     return NextResponse.json({
       success: true,
       text: formattedScript,
-      rawText: formattedScript, // Gemini provides the formatted transcript directly
+      rawText: transcript.text || '',
       language: sourceLanguage || 'en',
       processingTime: duration,
     });
