@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI, { toFile } from 'openai';
+import OpenAI from 'openai';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -53,17 +53,25 @@ export async function POST(request: NextRequest) {
 
     console.log('Transcribing file:', filename);
 
-    // Use OpenAI's toFile helper - simplified call
-    const fileForUpload = await toFile(buffer, filename);
+    // Create a Blob with proper filename metadata for OpenAI API
+    const blob = new Blob([buffer], { type: videoResponse.headers.get('content-type') || 'video/mp4' });
+
+    // Add the filename property that OpenAI expects
+    Object.defineProperty(blob, 'name', {
+      value: filename,
+      writable: false,
+      enumerable: true,
+      configurable: true
+    });
 
     console.log('File prepared for upload:', {
-      name: filename,
-      size: buffer.length,
-      type: 'buffer'
+      name: (blob as any).name,
+      size: blob.size,
+      type: blob.type
     });
 
     const transcription = await openai.audio.transcriptions.create({
-      file: fileForUpload,
+      file: blob as any,
       model: 'whisper-1',
       language: sourceLanguage || undefined,
     });
