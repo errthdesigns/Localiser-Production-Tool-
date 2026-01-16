@@ -84,11 +84,15 @@ export async function POST(request: NextRequest) {
 
 CRITICAL REQUIREMENTS:
 
-1. **IDENTIFY ALL SPEAKERS**:
-   - Count carefully - there may be 2, 3, or more people speaking
-   - Label them as SPEAKER 1, SPEAKER 2, SPEAKER 3, etc. in order of appearance
+1. **IDENTIFY ALL SPEAKERS WITH EXTREME CARE**:
+   - Listen for voice changes, gender, tone, and speaking style
+   - EVERY time the voice changes = NEW SPEAKER
+   - Label them as SPEAKER 1, SPEAKER 2, SPEAKER 3, etc. in order of FIRST appearance
    - Include VOICEOVER or NARRATOR if there's an offscreen voice
    - Do NOT combine multiple people into fewer speakers
+   - Do NOT attribute long dialogue blocks to one speaker if the voice changes mid-block
+   - If someone says just ONE brief thing, give them ONE line only
+   - Pay attention to conversational turn-taking (back-and-forth dialogue)
 
 2. **CAPTURE ALL ON-SCREEN TEXT** (THIS IS CRITICAL):
    - Look for brand names, product names, and logos
@@ -108,13 +112,14 @@ CRITICAL REQUIREMENTS:
 4. **SCENE DESCRIPTIONS**:
    - Add context: [SCENE: Product demonstration in bathroom]
    - Note scene changes: [SCENE: Close-up of product]
+   - Note character actions: [SCENE: SPEAKER 2 looks frustrated]
 
 5. **TIMING NOTES**:
    - Music cues: [MUSIC: Upbeat background]
    - Sound effects: [SFX: description]
    - Pauses: [PAUSE]
 
-EXAMPLE FORMAT FOR AN AD:
+EXAMPLE FORMAT FOR AN AD WITH PROPER SPEAKER ATTRIBUTION:
 [TITLE: "Bref Power Active"]
 
 [SCENE: Bathroom, two people enter]
@@ -127,19 +132,24 @@ That's a good product!
 SPEAKER 2:
 You don't actually think you're a toilet cleaner, do you?
 
+SPEAKER 1:
+Unlike you, I immerse myself in crafting character.
+
 [SCENE: Product close-up on toilet]
+
+SPEAKER 3:
+It's an ad, man!
 
 [SUPER: "CLEAN THE Bref WAY"]
 
 [LOCKUP: Bref logo]
 
-SPEAKER 3:
-It's the last time I cover you!
-
 ---
 
 Now format this raw transcript. Remember to:
-- Identify ALL speakers (don't miss anyone - there may be 2, 3, or more people)
+- Identify ALL speakers - count voice changes carefully, don't group different voices together
+- If someone speaks once briefly, give them just ONE line
+- Pay attention to dialogue exchanges (he said / she said / he replied)
 - Infer on-screen text from context (brand names mentioned, calls-to-action like "try it", product names)
 - Add placeholder [SUPER: "text"] where on-screen text would logically appear
 - Mark all brand mentions and logos as [LOCKUP: Brand Name]
@@ -152,7 +162,7 @@ IMPORTANT: You MUST identify on-screen text from the dialogue context. For examp
 RAW AUDIO TRANSCRIPT:
 ${data.text}
 
-Return ONLY the formatted script with ALL speakers identified and inferred supers/lockups included.`;
+Return ONLY the formatted script with ALL speakers CORRECTLY identified (separate every voice change) and inferred supers/lockups included.`;
 
     const scriptResponse = await openai.chat.completions.create({
       model: 'gpt-4o',
