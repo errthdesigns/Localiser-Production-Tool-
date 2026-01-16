@@ -80,11 +80,17 @@ export default function Home() {
       // Upload to Vercel Blob using client-side upload
       const { upload } = await import('@vercel/blob/client');
 
+      // Generate unique filename to prevent conflicts
+      const timestamp = Date.now();
+      const randomStr = Math.random().toString(36).substring(2, 8);
+      const fileExt = videoFile.name.split('.').pop();
+      const baseName = videoFile.name.replace(`.${fileExt}`, '');
+      const uniqueFileName = `${baseName}-${timestamp}-${randomStr}.${fileExt}`;
+
       setProgress(`Uploading ${fileSizeMB.toFixed(1)}MB video...`);
-      const blob = await upload(videoFile.name, videoFile, {
+      const blob = await upload(uniqueFileName, videoFile, {
         access: 'public',
         handleUploadUrl: '/api/upload',
-        addRandomSuffix: true, // Generate unique filename for each upload
       });
 
       console.log('Video uploaded to blob:', blob.url);
@@ -146,11 +152,17 @@ export default function Home() {
       // Upload to Vercel Blob using client-side upload
       const { upload } = await import('@vercel/blob/client');
 
+      // Generate unique filename to prevent conflicts
+      const timestamp = Date.now();
+      const randomStr = Math.random().toString(36).substring(2, 8);
+      const fileExt = videoFile.name.split('.').pop();
+      const baseName = videoFile.name.replace(`.${fileExt}`, '');
+      const uniqueFileName = `${baseName}-${timestamp}-${randomStr}.${fileExt}`;
+
       setProgress(`Uploading ${fileSizeMB.toFixed(1)}MB video...`);
-      const blob = await upload(videoFile.name, videoFile, {
+      const blob = await upload(uniqueFileName, videoFile, {
         access: 'public',
         handleUploadUrl: '/api/upload',
-        addRandomSuffix: true, // Generate unique filename for each upload
       });
 
       console.log('Video uploaded to blob:', blob.url);
