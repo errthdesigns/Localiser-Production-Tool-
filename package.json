@@ -1,5 +1,5 @@
 {
-  "name": "localiser-production-tool",
+  "name": "scriptshift",
   "version": "0.1.0",
   "private": true,
   "scripts": {
