@@ -682,7 +682,10 @@ export default function Home() {
                 <strong>Detected Language:</strong> {detectedLanguage.toUpperCase()} → <strong>Target:</strong> {languages.find(l => l.code === targetLanguage)?.name}
               </p>
               <p className="text-xs text-blue-600 mt-2">
-                ✏️ Review the video script below. Edit speaker labels, on-screen text (SUPERS), titles, and dialogue before translation.
+                ✏️ Review the video script below. The AI has identified speakers and added inferred on-screen text based on the dialogue.
+              </p>
+              <p className="text-xs text-blue-700 mt-1 font-medium">
+                📝 Add any missing [SUPER: "text"] or [LOCKUP: Brand] elements that appear in your video!
               </p>
             </div>
 

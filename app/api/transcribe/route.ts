@@ -76,51 +76,9 @@ export async function POST(request: NextRequest) {
     console.log('Detected language:', data.language);
     console.log('Raw transcription:', data.text.substring(0, 150) + '...');
 
-    // Step 2: Analyze video for on-screen text with GPT-4o Vision
-    console.log('Analyzing video for on-screen text with GPT-4o Vision...');
-    const openai = new OpenAI({ apiKey: openaiApiKey });
-
-    const visionResponse = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: `Analyze this video advertisement and identify ALL on-screen text elements. List:
-1. Brand names and logos
-2. Call-to-action text (TRY NOW, BUY NOW, etc.)
-3. Taglines and slogans
-4. Product names
-5. Any other text overlays
-
-Return in this exact format:
-[SUPER: "exact text 1"]
-[SUPER: "exact text 2"]
-[LOCKUP: Brand Logo Name]
-etc.
-
-If there's no on-screen text, return: "No on-screen text detected"`
-            },
-            {
-              type: 'image_url',
-              image_url: {
-                url: videoUrl,
-                detail: 'high'
-              }
-            }
-          ]
-        }
-      ],
-      max_tokens: 500
-    });
-
-    const onScreenText = visionResponse.choices[0].message.content || 'No on-screen text detected';
-    console.log('On-screen text detected:', onScreenText);
-
-    // Step 3: Format transcript into proper video script
+    // Step 2: Format transcript into proper video script
     console.log('Formatting transcript into video script...');
+    const openai = new OpenAI({ apiKey: openaiApiKey });
 
     const scriptPrompt = `You are a professional video script formatter analyzing an advertisement. Convert the following raw transcript into a properly formatted video production script.
 
@@ -181,17 +139,20 @@ It's the last time I cover you!
 ---
 
 Now format this raw transcript. Remember to:
-- Identify ALL speakers (don't miss anyone)
-- Insert the on-screen text elements at appropriate points in the dialogue
-- Mark all brand mentions and logos
+- Identify ALL speakers (don't miss anyone - there may be 2, 3, or more people)
+- Infer on-screen text from context (brand names mentioned, calls-to-action like "try it", product names)
+- Add placeholder [SUPER: "text"] where on-screen text would logically appear
+- Mark all brand mentions and logos as [LOCKUP: Brand Name]
+
+IMPORTANT: You MUST identify on-screen text from the dialogue context. For example:
+- If someone says "Bref", add [LOCKUP: Bref logo] nearby
+- If dialogue suggests urgency, add [SUPER: "TRY NOW"] or similar
+- Product names mentioned should have [SUPER: "Product Name"]
 
 RAW AUDIO TRANSCRIPT:
 ${data.text}
 
-DETECTED ON-SCREEN TEXT (insert these at appropriate timing in the script):
-${onScreenText}
-
-Return ONLY the formatted script, no additional commentary.`;
+Return ONLY the formatted script with ALL speakers identified and inferred supers/lockups included.`;
 
     const scriptResponse = await openai.chat.completions.create({
       model: 'gpt-4o',
