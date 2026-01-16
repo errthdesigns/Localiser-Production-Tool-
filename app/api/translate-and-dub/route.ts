@@ -1,14 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import { writeFile, unlink, readFile } from 'fs/promises';
-import * as path from 'path';
-
-const execAsync = promisify(exec);
-
-// Get ffmpeg path - will be bundled by Vercel
-const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
+import { put } from '@vercel/blob';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -160,83 +152,52 @@ export async function POST(request: NextRequest) {
       throw new Error(`TTS generation failed: ${error}`);
     }
 
-    const audioBlob = await ttsResponse.blob();
-    const audioBuffer = await audioBlob.arrayBuffer();
+    const audioResponse = await ttsResponse.blob();
+    const audioBuffer = await audioResponse.arrayBuffer();
 
     console.log('TTS complete! Audio size:', audioBuffer.byteLength, 'bytes');
 
-    // Step 3: Download original video
-    console.log('[3/4] Downloading original video...');
-    const videoResponse = await fetch(videoUrl);
-    if (!videoResponse.ok) {
-      throw new Error('Failed to download video from URL');
-    }
-    const videoBuffer = await videoResponse.arrayBuffer();
-    console.log('Video downloaded:', videoBuffer.byteLength, 'bytes');
-
-    // Step 4: Combine video with dubbed audio using FFmpeg
-    console.log('[4/4] Combining video with dubbed audio...');
-    console.log('FFmpeg path:', ffmpegPath);
-
+    // Step 3: Upload dubbed audio to Vercel Blob (so Replicate can access it)
+    console.log('[3/4] Uploading dubbed audio to Vercel Blob...');
     const timestamp = Date.now();
-    const videoPath = path.join('/tmp', `input-${timestamp}.mp4`);
-    const audioPath = path.join('/tmp', `audio-${timestamp}.mp3`);
-    const outputPath = path.join('/tmp', `output-${timestamp}.mp4`);
+    const audioBlob = await put(`dubbed-audio-${timestamp}.mp3`, Buffer.from(audioBuffer), {
+      access: 'public',
+      contentType: 'audio/mpeg',
+    });
+    console.log('Audio uploaded to:', audioBlob.url);
 
-    try {
-      // Write files to /tmp
-      await writeFile(videoPath, Buffer.from(videoBuffer));
-      await writeFile(audioPath, Buffer.from(audioBuffer));
+    // Step 4: Generate lip-synced video using Replicate
+    console.log('[4/4] Generating lip-synced video with AI...');
+    console.log('Video URL:', videoUrl);
+    console.log('Audio URL:', audioBlob.url);
 
-      console.log('Running FFmpeg...');
-      console.log('Input video:', videoPath, 'exists');
-      console.log('Input audio:', audioPath, 'exists');
+    const lipsyncResponse = await fetch(`${request.nextUrl.origin}/api/lipsync-dub`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        videoUrl: videoUrl,
+        audioUrl: audioBlob.url,
+      }),
+    });
 
-      // Use FFmpeg to replace audio track
-      const command = `"${ffmpegPath}" -y -i "${videoPath}" -i "${audioPath}" -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest "${outputPath}"`;
-      console.log('FFmpeg command:', command);
-
-      const { stdout, stderr } = await execAsync(command);
-      console.log('FFmpeg stdout:', stdout);
-      if (stderr) console.log('FFmpeg stderr:', stderr);
-      console.log('FFmpeg execution complete, output should be at:', outputPath);
-
-      // Read the output video
-      const dubbedVideoBuffer = await readFile(outputPath);
-      console.log('Dubbed video file read successfully:', dubbedVideoBuffer.length, 'bytes');
-
-      const videoBase64 = dubbedVideoBuffer.toString('base64');
-      console.log('Dubbed video base64 encoded:', videoBase64.length, 'characters');
-
-      // Clean up temp files
-      await Promise.all([
-        unlink(videoPath).catch(() => {}),
-        unlink(audioPath).catch(() => {}),
-        unlink(outputPath).catch(() => {}),
-      ]);
-
-      const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-      console.log(`=== Translation and Dubbing Complete in ${duration}s ===`);
-
-      return NextResponse.json({
-        success: true,
-        translatedText,
-        videoData: videoBase64, // Return dubbed video
-        processingTime: duration,
-      });
-
-    } catch (ffmpegError) {
-      console.error('FFmpeg error:', ffmpegError);
-
-      // Clean up on error
-      await Promise.all([
-        unlink(videoPath).catch(() => {}),
-        unlink(audioPath).catch(() => {}),
-        unlink(outputPath).catch(() => {}),
-      ]);
-
-      throw new Error(`Failed to combine video and audio: ${ffmpegError instanceof Error ? ffmpegError.message : 'Unknown error'}`);
+    if (!lipsyncResponse.ok) {
+      const errorData = await lipsyncResponse.json();
+      throw new Error(`Lip-sync failed: ${errorData.error || lipsyncResponse.statusText}`);
     }
+
+    const lipsyncData = await lipsyncResponse.json();
+    console.log('Lip-sync complete!');
+
+    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`=== Translation and Lip-Sync Dubbing Complete in ${duration}s ===`);
+
+    return NextResponse.json({
+      success: true,
+      translatedText,
+      videoData: lipsyncData.videoData, // Return lip-synced video
+      lipsyncedVideoUrl: lipsyncData.lipsyncedVideoUrl,
+      processingTime: duration,
+    });
 
   } catch (error) {
     console.error('=== ERROR in translate-and-dub ===');
