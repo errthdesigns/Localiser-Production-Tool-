@@ -76,42 +76,120 @@ export async function POST(request: NextRequest) {
     console.log('Detected language:', data.language);
     console.log('Raw transcription:', data.text.substring(0, 150) + '...');
 
-    // Step 2: Format transcript into proper video script
-    console.log('Formatting transcript into video script...');
+    // Step 2: Analyze video for on-screen text with GPT-4o Vision
+    console.log('Analyzing video for on-screen text with GPT-4o Vision...');
     const openai = new OpenAI({ apiKey: openaiApiKey });
 
-    const scriptPrompt = `You are a professional video script formatter. Convert the following raw transcript into a properly formatted video production script.
+    const visionResponse = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: `Analyze this video advertisement and identify ALL on-screen text elements. List:
+1. Brand names and logos
+2. Call-to-action text (TRY NOW, BUY NOW, etc.)
+3. Taglines and slogans
+4. Product names
+5. Any other text overlays
 
-FORMAT REQUIREMENTS:
-1. **SPEAKER LABELS**: Identify different speakers as SPEAKER 1, SPEAKER 2, etc., or use character names if identifiable (VOICEOVER, NARRATOR, etc.)
-2. **ON-SCREEN TEXT**: Mark any text that appears on screen with [SUPER: "text here"]
-3. **TITLES/GRAPHICS**: Mark title cards and graphics with [TITLE: "text"] or [GRAPHIC: description]
-4. **LOCKUPS**: Mark brand logos and lockups with [LOCKUP: description]
-5. **SCENE DESCRIPTIONS**: Add brief scene descriptions in [SCENE: description] when context changes
-6. **TIMING NOTES**: Add timing cues like [PAUSE], [MUSIC], [SFX: description] where relevant
+Return in this exact format:
+[SUPER: "exact text 1"]
+[SUPER: "exact text 2"]
+[LOCKUP: Brand Logo Name]
+etc.
 
-EXAMPLE FORMAT:
-[TITLE: "Product Name"]
+If there's no on-screen text, return: "No on-screen text detected"`
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: videoUrl,
+                detail: 'high'
+              }
+            }
+          ]
+        }
+      ],
+      max_tokens: 500
+    });
 
-[SCENE: Product demonstration]
+    const onScreenText = visionResponse.choices[0].message.content || 'No on-screen text detected';
+    console.log('On-screen text detected:', onScreenText);
 
-VOICEOVER:
-This is the best product you'll ever use.
+    // Step 3: Format transcript into proper video script
+    console.log('Formatting transcript into video script...');
 
-[SUPER: "Available Now"]
+    const scriptPrompt = `You are a professional video script formatter analyzing an advertisement. Convert the following raw transcript into a properly formatted video production script.
+
+CRITICAL REQUIREMENTS:
+
+1. **IDENTIFY ALL SPEAKERS**:
+   - Count carefully - there may be 2, 3, or more people speaking
+   - Label them as SPEAKER 1, SPEAKER 2, SPEAKER 3, etc. in order of appearance
+   - Include VOICEOVER or NARRATOR if there's an offscreen voice
+   - Do NOT combine multiple people into fewer speakers
+
+2. **CAPTURE ALL ON-SCREEN TEXT** (THIS IS CRITICAL):
+   - Look for brand names, product names, and logos
+   - Call-to-action text (e.g., "TRY NOW", "BUY NOW", "SHOP TODAY")
+   - Taglines and slogans (e.g., "CLEAN THE [BRAND] WAY")
+   - Product benefits text
+   - Website URLs, discount codes, social media handles
+   - Price information
+   - ANY text overlay that appears on screen
+   - Format as: [SUPER: "exact text as shown"]
+
+3. **TITLES/GRAPHICS**:
+   - Opening title cards: [TITLE: "text"]
+   - Brand lockups and logos: [LOCKUP: Brand Name Logo]
+   - Product graphics: [GRAPHIC: description]
+
+4. **SCENE DESCRIPTIONS**:
+   - Add context: [SCENE: Product demonstration in bathroom]
+   - Note scene changes: [SCENE: Close-up of product]
+
+5. **TIMING NOTES**:
+   - Music cues: [MUSIC: Upbeat background]
+   - Sound effects: [SFX: description]
+   - Pauses: [PAUSE]
+
+EXAMPLE FORMAT FOR AN AD:
+[TITLE: "Bref Power Active"]
+
+[SCENE: Bathroom, two people enter]
 
 SPEAKER 1:
-I can't believe how well this works!
+That's a good product!
 
-[SFX: Success sound]
+[SUPER: "TRY NOW"]
 
-[LOCKUP: Company logo with tagline]
+SPEAKER 2:
+You don't actually think you're a toilet cleaner, do you?
+
+[SCENE: Product close-up on toilet]
+
+[SUPER: "CLEAN THE Bref WAY"]
+
+[LOCKUP: Bref logo]
+
+SPEAKER 3:
+It's the last time I cover you!
 
 ---
 
-Now format this raw transcript:
+Now format this raw transcript. Remember to:
+- Identify ALL speakers (don't miss anyone)
+- Insert the on-screen text elements at appropriate points in the dialogue
+- Mark all brand mentions and logos
 
+RAW AUDIO TRANSCRIPT:
 ${data.text}
+
+DETECTED ON-SCREEN TEXT (insert these at appropriate timing in the script):
+${onScreenText}
 
 Return ONLY the formatted script, no additional commentary.`;
 
