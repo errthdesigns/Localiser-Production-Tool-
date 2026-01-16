@@ -321,19 +321,17 @@ export default function Home() {
     setStep('processing');
 
     try {
-      console.log('Starting dubbing with translated text...');
+      console.log('Starting ElevenLabs Dubbing Studio...');
 
-      // Use the already-translated text for dubbing
-      setProgress('🎤 Generating ' + languages.find(l => l.code === targetLanguage)?.name + ' audio...');
+      // Use ElevenLabs Dubbing Studio for professional voice cloning and timing
+      setProgress('🎬 Dubbing video with ElevenLabs Enterprise (voice cloning + perfect timing)...');
       const response = await fetch('/api/translate-and-dub', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          transcript: editableTranscript, // Original English for reference
-          translatedText: translatedText, // Already translated text (skip translation step)
-          sourceLanguage: detectedLanguage,
+          videoUrl: videoUrl,
           targetLanguage: targetLanguage,
-          videoUrl: videoUrl, // Pass video URL for combining with dubbed audio
+          sourceLanguage: detectedLanguage,
         }),
       });
 
