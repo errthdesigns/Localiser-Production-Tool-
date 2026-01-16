@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { videoUrl, sourceLanguage } = body;
+    const { videoUrl, sourceLanguage, speakerCount = 0 } = body;
 
     if (!videoUrl) {
       return NextResponse.json(
@@ -26,6 +26,8 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    console.log('Speaker count:', speakerCount === 0 ? 'auto-detect' : speakerCount);
 
     console.log('Transcribing video with OpenAI Whisper...');
     const startTime = Date.now();
@@ -47,13 +49,21 @@ export async function POST(request: NextRequest) {
     // Step 2: Format with GPT-4 (add speaker labels and production markers)
     console.log('[2/2] Formatting script with GPT-4...');
 
+    // Build speaker instruction based on speakerCount
+    const speakerInstruction = speakerCount > 0
+      ? `**CRITICAL**: This video has EXACTLY ${speakerCount} speaker${speakerCount > 1 ? 's' : ''}. You MUST use exactly ${speakerCount} speaker label${speakerCount > 1 ? 's' : ''} (${Array.from({length: speakerCount}, (_, i) => `SPEAKER ${i + 1}`).join(', ')}). Do not use more or fewer speakers.`
+      : `**BE CONSERVATIVE**: Only create new speaker labels when absolutely necessary. Default to fewer speakers unless dialogue clearly indicates different people (e.g., back-and-forth conversation, distinct roles, questions and answers between different people).`;
+
     const scriptPrompt = `You are a professional video script formatter. Format the following video transcript into a production-ready script with:
 
-1. **SPEAKER LABELS**: Analyze the dialogue and assign speaker labels (SPEAKER 1, SPEAKER 2, etc.) based on:
+1. **SPEAKER LABELS**: ${speakerInstruction}
+
+   Analyze the dialogue and assign speaker labels (SPEAKER 1, SPEAKER 2, etc.) based on:
    - Conversation flow and turn-taking
    - Distinct speaking styles and tones
-   - Questions and responses
+   - Questions and responses between different people
    - Role identifiers in dialogue
+   - Changes in speaking pace or tone that indicate a different person
 
 2. **PRODUCTION MARKERS**:
    - Add [TITLE: "text"] for opening title cards
