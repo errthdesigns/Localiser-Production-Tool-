@@ -105,7 +105,7 @@ export class FastDubbingService {
   /**
    * Generate speech using ElevenLabs TTS
    */
-  async generateSpeech(text: string, voiceId: string = 'adam'): Promise<Blob> {
+  async generateSpeech(text: string, voiceId: string = 'ErXwobaYiN019PkySvjV'): Promise<Blob> {
     console.log('[Fast Dubbing] Step 3: Generating dubbed audio...');
 
     const response = await fetch(

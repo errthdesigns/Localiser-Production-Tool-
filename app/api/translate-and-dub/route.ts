@@ -73,8 +73,11 @@ export async function POST(request: NextRequest) {
     // Step 2: Generate speech with ElevenLabs
     console.log('[2/2] Generating speech with ElevenLabs...');
 
+    // Use Antoni voice ID (multilingual male voice)
+    const voiceId = 'ErXwobaYiN019PkySvjV';
+
     const ttsResponse = await fetch(
-      'https://api.elevenlabs.io/v1/text-to-speech/adam',
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
       {
         method: 'POST',
         headers: {
