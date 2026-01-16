@@ -20,6 +20,12 @@
     },
     "app/api/fast-dub/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/transcribe/route.ts": {
+      "maxDuration": 180
+    },
+    "app/api/translate-and-dub/route.ts": {
+      "maxDuration": 180
     }
   }
 }

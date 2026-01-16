@@ -16,7 +16,7 @@ interface VoiceRecommendations {
   summary: string;
 }
 
-type Step = 'upload' | 'voice-selection' | 'processing' | 'complete';
+type Step = 'upload' | 'review-transcript' | 'voice-selection' | 'processing' | 'complete';
 
 export default function Home() {
   const [step, setStep] = useState<Step>('upload');
@@ -34,17 +34,14 @@ export default function Home() {
   const [generatedVideo, setGeneratedVideo] = useState<Blob | null>(null);
   const [originalText, setOriginalText] = useState<string>('');
   const [translatedText, setTranslatedText] = useState<string>('');
+  const [detectedLanguage, setDetectedLanguage] = useState<string>('');
+  const [editableTranscript, setEditableTranscript] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const languages = [
     { code: 'es', name: 'Spanish' },
     { code: 'fr', name: 'French' },
-    { code: 'de', name: 'German' },
     { code: 'it', name: 'Italian' },
-    { code: 'pt', name: 'Portuguese' },
-    { code: 'ja', name: 'Japanese' },
-    { code: 'ko', name: 'Korean' },
-    { code: 'zh', name: 'Chinese' },
   ];
 
   const handleFileSelect = (file: File) => {
@@ -208,8 +205,7 @@ export default function Home() {
 
     setIsLoading(true);
     setError('');
-    setProgress('Uploading video for fast dubbing...');
-    setStep('processing');
+    setProgress('Uploading video for transcription...');
 
     try {
       const fileSizeMB = videoFile.size / 1024 / 1024;
@@ -219,7 +215,6 @@ export default function Home() {
         setError(`Video file is ${fileSizeMB.toFixed(2)}MB. Maximum file size for fast mode is 25MB.`);
         setIsLoading(false);
         setProgress('');
-        setStep('upload');
         return;
       }
 
@@ -239,27 +234,73 @@ export default function Home() {
 
       console.log('Video uploaded to blob:', blob.url);
 
-      // Call fast dubbing API
-      setProgress('🚀 Transcribing audio with AI...');
-      const response = await fetch('/api/fast-dub', {
+      // Step 1: Transcribe only
+      setProgress('🎤 Transcribing audio with AI...');
+      const response = await fetch('/api/transcribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           videoUrl: blob.url,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Transcription failed');
+      }
+
+      const data = await response.json();
+
+      console.log('Transcription complete!');
+      console.log('Processing time:', data.processingTime, 'seconds');
+      console.log('Detected language:', data.language);
+      console.log('Transcript:', data.text.substring(0, 100));
+
+      // Set transcript and show review screen
+      setOriginalText(data.text);
+      setEditableTranscript(data.text);
+      setDetectedLanguage(data.language);
+      setStep('review-transcript');
+
+    } catch (err) {
+      console.error('Transcription error:', err);
+      setError(err instanceof Error ? err.message : 'Transcription failed');
+    } finally {
+      setIsLoading(false);
+      setProgress('');
+    }
+  };
+
+  const completeDubbing = async () => {
+    setIsLoading(true);
+    setError('');
+    setProgress('Translating and generating audio...');
+    setStep('processing');
+
+    try {
+      console.log('Starting translation and dubbing with edited transcript...');
+
+      // Step 2: Translate and generate audio with edited transcript
+      setProgress('🌍 Translating to ' + languages.find(l => l.code === targetLanguage)?.name + '...');
+      const response = await fetch('/api/translate-and-dub', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transcript: editableTranscript,
+          sourceLanguage: detectedLanguage,
           targetLanguage: targetLanguage,
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Fast dubbing failed');
+        throw new Error(errorData.error || 'Translation and dubbing failed');
       }
 
       const data = await response.json();
 
-      console.log('Fast dubbing complete!');
+      console.log('Dubbing complete!');
       console.log('Processing time:', data.processingTime, 'seconds');
-      console.log('Original:', data.originalText.substring(0, 100));
       console.log('Translated:', data.translatedText.substring(0, 100));
 
       // Convert base64 audio to blob
@@ -267,14 +308,13 @@ export default function Home() {
       const audioBlob = new Blob([audioBytes], { type: 'audio/mpeg' });
 
       setGeneratedAudio(audioBlob);
-      setOriginalText(data.originalText);
       setTranslatedText(data.translatedText);
       setStep('complete');
 
     } catch (err) {
-      console.error('Fast dubbing error:', err);
-      setError(err instanceof Error ? err.message : 'Fast dubbing failed');
-      setStep('upload');
+      console.error('Dubbing error:', err);
+      setError(err instanceof Error ? err.message : 'Dubbing failed');
+      setStep('review-transcript');
     } finally {
       setIsLoading(false);
       setProgress('');
@@ -632,7 +672,63 @@ export default function Home() {
           </div>
         )}
 
-        {/* Step 2: Voice Selection */}
+        {/* Step 2: Review Transcript */}
+        {step === 'review-transcript' && (
+          <div className="bg-white rounded-lg shadow-lg p-8">
+            <h2 className="text-2xl font-semibold mb-4">📝 Review & Edit Transcript</h2>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <p className="text-sm text-blue-800">
+                <strong>Detected Language:</strong> {detectedLanguage.toUpperCase()} → <strong>Target:</strong> {languages.find(l => l.code === targetLanguage)?.name}
+              </p>
+              <p className="text-xs text-blue-600 mt-2">
+                ✏️ Review the transcript below and make any necessary edits before translation. This is your chance to fix any transcription errors!
+              </p>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Original Transcript
+                <span className="text-gray-500 font-normal ml-2">({editableTranscript.length} characters)</span>
+              </label>
+              <textarea
+                value={editableTranscript}
+                onChange={(e) => setEditableTranscript(e.target.value)}
+                rows={12}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                placeholder="Edit transcript here..."
+              />
+            </div>
+
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">💡 Tips:</h3>
+              <ul className="text-xs text-gray-600 space-y-1">
+                <li>• Fix any words that were transcribed incorrectly</li>
+                <li>• Add punctuation for better translation quality</li>
+                <li>• Remove filler words (um, uh, etc.) if desired</li>
+                <li>• Ensure proper capitalization and formatting</li>
+              </ul>
+            </div>
+
+            <div className="flex gap-4">
+              <button
+                onClick={() => setStep('upload')}
+                className="flex-1 bg-gray-200 text-gray-700 py-3 px-6 rounded-lg font-semibold hover:bg-gray-300 transition"
+              >
+                ← Back
+              </button>
+              <button
+                onClick={completeDubbing}
+                disabled={isLoading || !editableTranscript.trim()}
+                className="flex-2 bg-green-600 text-white py-3 px-8 rounded-lg font-semibold hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition"
+              >
+                {isLoading ? 'Processing...' : '✓ Approve & Continue to Dubbing'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Voice Selection */}
         {step === 'voice-selection' && voiceRecommendations && (
           <div className="bg-white rounded-lg shadow-lg p-8">
             <h2 className="text-2xl font-semibold mb-4">Select Voice</h2>
