@@ -22,6 +22,8 @@ export default function Home() {
   const [step, setStep] = useState<Step>('upload');
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [targetLanguage, setTargetLanguage] = useState('es');
+  const [useDubbingStudio, setUseDubbingStudio] = useState(true); // Default to dubbing studio
+  const [dubbingId, setDubbingId] = useState<string>('');
   const [voiceRecommendations, setVoiceRecommendations] = useState<VoiceRecommendations | null>(null);
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
@@ -120,6 +122,105 @@ export default function Home() {
       setIsLoading(false);
       setProgress('');
     }
+  };
+
+  const dubVideoWithStudio = async () => {
+    if (!videoFile) return;
+
+    setIsLoading(true);
+    setError('');
+    setProgress('Uploading video to ElevenLabs Dubbing Studio...');
+
+    try {
+      const fileSizeMB = videoFile.size / 1024 / 1024;
+
+      // Warn about very large files
+      if (fileSizeMB > 50) {
+        setError(`Video file is ${fileSizeMB.toFixed(2)}MB. Maximum file size is 50MB.`);
+        setIsLoading(false);
+        setProgress('');
+        return;
+      }
+
+      // Upload to Vercel Blob using client-side upload
+      const { upload } = await import('@vercel/blob/client');
+
+      setProgress(`Uploading ${fileSizeMB.toFixed(1)}MB video...`);
+      const blob = await upload(videoFile.name, videoFile, {
+        access: 'public',
+        handleUploadUrl: '/api/upload',
+      });
+
+      console.log('Video uploaded to blob:', blob.url);
+      setProgress('Creating dubbing job...');
+
+      // Create dubbing job
+      const response = await fetch('/api/dub-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoUrl: blob.url,
+          targetLanguage: targetLanguage,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create dubbing job');
+      }
+
+      const data = await response.json();
+      setDubbingId(data.dubbingId);
+      setProgress('Dubbing in progress...');
+
+      // Poll for completion
+      await pollDubbingStatus(data.dubbingId);
+
+      setStep('complete');
+    } catch (err) {
+      console.error('Dubbing error:', err);
+      setError(err instanceof Error ? err.message : 'Dubbing failed');
+    } finally {
+      setIsLoading(false);
+      setProgress('');
+    }
+  };
+
+  const pollDubbingStatus = async (jobId: string) => {
+    const maxPolls = 60; // 5 minutes max (60 * 5 seconds)
+    let polls = 0;
+
+    while (polls < maxPolls) {
+      try {
+        const response = await fetch(`/api/dub-video/status?dubbingId=${jobId}`);
+        const data = await response.json();
+
+        console.log('Dubbing status:', data.status);
+        setProgress(`Dubbing status: ${data.status}...`);
+
+        if (data.ready) {
+          // Download the dubbed video
+          const videoUrl = `/api/dub-video/download?dubbingId=${jobId}&targetLanguage=${targetLanguage}`;
+          const videoResponse = await fetch(videoUrl);
+          const videoBlob = await videoResponse.blob();
+          setGeneratedVideo(videoBlob);
+          return;
+        }
+
+        if (data.status === 'failed') {
+          throw new Error('Dubbing job failed');
+        }
+
+        // Wait 5 seconds before next poll
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        polls++;
+      } catch (error) {
+        console.error('Polling error:', error);
+        throw error;
+      }
+    }
+
+    throw new Error('Dubbing timed out');
   };
 
   const generateAudio = async (text: string) => {
@@ -309,12 +410,42 @@ export default function Home() {
               </select>
             </div>
 
+            <div className="mt-6 bg-gray-50 p-4 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Dubbing Method
+                  </label>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {useDubbingStudio
+                      ? 'Automatic dubbing with lip-sync (recommended)'
+                      : 'Manual voice selection and audio generation'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setUseDubbingStudio(!useDubbingStudio)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    useDubbingStudio ? 'bg-blue-600' : 'bg-gray-300'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      useDubbingStudio ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
             <button
-              onClick={analyzeVoice}
+              onClick={useDubbingStudio ? dubVideoWithStudio : analyzeVoice}
               disabled={!videoFile || isLoading}
               className="mt-6 w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition"
             >
-              {isLoading ? 'Analyzing...' : 'Analyze Video & Find Voices'}
+              {isLoading
+                ? (useDubbingStudio ? 'Dubbing in progress...' : 'Analyzing...')
+                : (useDubbingStudio ? 'Start Auto Dubbing' : 'Analyze Video & Find Voices')}
             </button>
           </div>
         )}
