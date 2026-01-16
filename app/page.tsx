@@ -321,19 +321,17 @@ export default function Home() {
     setStep('processing');
 
     try {
-      console.log('Starting dubbing with translated text...');
+      console.log('Starting ElevenLabs Dubbing Studio...');
 
-      // Use the already-translated text for dubbing
-      setProgress('🎤 Generating ' + languages.find(l => l.code === targetLanguage)?.name + ' audio...');
+      // Use ElevenLabs Dubbing Studio for professional voice cloning and timing
+      setProgress('🎬 Dubbing video with ElevenLabs Enterprise (voice cloning + perfect timing)...');
       const response = await fetch('/api/translate-and-dub', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          transcript: editableTranscript, // Original English for reference
-          translatedText: translatedText, // Already translated text (skip translation step)
-          sourceLanguage: detectedLanguage,
+          videoUrl: videoUrl,
           targetLanguage: targetLanguage,
-          videoUrl: videoUrl, // Pass video URL for combining with dubbed audio
+          sourceLanguage: detectedLanguage,
         }),
       });
 
@@ -347,9 +345,18 @@ export default function Home() {
       console.log('Dubbing complete!');
       console.log('Processing time:', data.processingTime, 'seconds');
 
+      // Verify videoData exists in response
+      if (!data.videoData) {
+        throw new Error('API did not return video data. Check server logs for FFmpeg errors.');
+      }
+
+      console.log('Video data received, size:', data.videoData.length, 'characters (base64)');
+
       // Convert base64 video to blob
       const videoBytes = Uint8Array.from(atob(data.videoData), c => c.charCodeAt(0));
       const videoBlob = new Blob([videoBytes], { type: 'video/mp4' });
+
+      console.log('Video blob created, size:', videoBlob.size, 'bytes');
 
       setGeneratedVideo(videoBlob);
       setStep('complete');
@@ -515,69 +522,102 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-8">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-4xl font-bold text-gray-900 mb-2">
-          AI Video Localization Tool
-        </h1>
-        <p className="text-gray-600 mb-8">
-          Professional video translation with AI-powered lip-sync and voice matching
-        </p>
+    <main className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 p-8">
+      <div className="max-w-5xl mx-auto">
+        {/* Header */}
+        <div className="text-center mb-12">
+          <div className="inline-flex items-center gap-3 mb-4">
+            <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center">
+              <span className="text-2xl">🎬</span>
+            </div>
+            <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              VoicePort
+            </h1>
+          </div>
+          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+            Transform your videos into any language with AI-powered voice cloning and dubbing
+          </p>
+        </div>
 
         {/* Progress Steps */}
-        <div className="flex items-center justify-between mb-8">
-          {['upload', 'edit-english', 'edit-translation', 'complete'].map((s, i) => (
-            <div key={s} className="flex items-center">
-              <div
-                className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
-                  step === s || (step === 'processing' && s === 'complete')
-                    ? 'bg-blue-600 text-white'
-                    : ['upload', 'edit-english', 'edit-translation', 'processing', 'complete'].indexOf(step) >
-                      ['upload', 'edit-english', 'edit-translation', 'processing', 'complete'].indexOf(s)
-                    ? 'bg-green-500 text-white'
-                    : 'bg-gray-300 text-gray-600'
-                }`}
-              >
-                {i + 1}
+        <div className="flex items-center justify-between mb-12 max-w-3xl mx-auto">
+          {[
+            { key: 'upload', label: 'Upload' },
+            { key: 'edit-english', label: 'Review' },
+            { key: 'edit-translation', label: 'Translate' },
+            { key: 'complete', label: 'Done' }
+          ].map((stepItem, i) => {
+            const isActive = step === stepItem.key || (step === 'processing' && stepItem.key === 'complete');
+            const isCompleted = ['upload', 'edit-english', 'edit-translation', 'processing', 'complete'].indexOf(step) >
+              ['upload', 'edit-english', 'edit-translation', 'processing', 'complete'].indexOf(stepItem.key);
+
+            return (
+              <div key={stepItem.key} className="flex items-center flex-1">
+                <div className="flex flex-col items-center flex-1">
+                  <div
+                    className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-lg transition-all duration-300 ${
+                      isActive
+                        ? 'bg-gradient-to-br from-blue-600 to-purple-600 text-white shadow-lg scale-110'
+                        : isCompleted
+                        ? 'bg-green-500 text-white'
+                        : 'bg-white text-gray-400 border-2 border-gray-200'
+                    }`}
+                  >
+                    {isCompleted ? '✓' : i + 1}
+                  </div>
+                  <span className={`text-xs mt-2 font-medium ${isActive ? 'text-purple-600' : 'text-gray-500'}`}>
+                    {stepItem.label}
+                  </span>
+                </div>
+                {i < 3 && (
+                  <div className={`h-1 flex-1 mx-2 rounded-full transition-all duration-300 ${
+                    isCompleted ? 'bg-green-500' : 'bg-gray-200'
+                  }`} />
+                )}
               </div>
-              {i < 3 && (
-                <div
-                  className={`w-20 h-1 mx-2 ${
-                    ['upload', 'edit-english', 'edit-translation', 'processing', 'complete'].indexOf(step) > i
-                      ? 'bg-green-500'
-                      : 'bg-gray-300'
-                  }`}
-                />
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Error Display */}
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6">
-            {error}
+          <div className="bg-red-50 border-2 border-red-200 text-red-700 px-6 py-4 rounded-2xl mb-8 flex items-start gap-3 shadow-sm">
+            <span className="text-2xl">⚠️</span>
+            <div className="flex-1">
+              <p className="font-semibold mb-1">Error</p>
+              <p className="text-sm">{error}</p>
+            </div>
           </div>
         )}
 
         {/* Progress Display */}
         {progress && (
-          <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded mb-6 flex items-center">
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-700 mr-3"></div>
-            {progress}
+          <div className="bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 px-6 py-4 rounded-2xl mb-8 flex items-center gap-4 shadow-sm">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-3 border-purple-600"></div>
+            <p className="text-blue-900 font-medium">{progress}</p>
           </div>
         )}
 
         {/* Step 1: Upload */}
         {step === 'upload' && (
-          <div className="bg-white rounded-lg shadow-lg p-8">
-            <h2 className="text-2xl font-semibold mb-4">Upload Video</h2>
+          <div className="bg-white rounded-3xl shadow-xl p-10 border border-gray-100">
+            <div className="mb-8">
+              <h2 className="text-3xl font-bold text-gray-900 mb-3">Upload Your Video</h2>
+              <p className="text-gray-600">
+                Upload your video and we'll automatically transcribe, translate, and dub it with AI voice cloning
+              </p>
+            </div>
 
+            {/* Upload Zone */}
             <div
               onDrop={handleDrop}
               onDragOver={(e) => e.preventDefault()}
               onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center cursor-pointer hover:border-blue-500 transition"
+              className={`border-3 border-dashed rounded-2xl p-16 text-center cursor-pointer transition-all duration-300 ${
+                videoFile
+                  ? 'border-green-300 bg-green-50'
+                  : 'border-gray-300 bg-gray-50 hover:border-purple-400 hover:bg-purple-50'
+              }`}
             >
               <input
                 ref={fileInputRef}
@@ -587,119 +627,100 @@ export default function Home() {
                 className="hidden"
               />
               {videoFile ? (
-                <div>
-                  <p className="text-lg font-semibold text-gray-900">{videoFile.name}</p>
-                  <p className="text-sm text-gray-500 mt-1">
+                <div className="space-y-3">
+                  <div className="w-16 h-16 bg-green-500 rounded-2xl flex items-center justify-center mx-auto">
+                    <span className="text-3xl">✓</span>
+                  </div>
+                  <p className="text-xl font-semibold text-gray-900">{videoFile.name}</p>
+                  <p className="text-sm text-gray-600">
                     {(videoFile.size / 1024 / 1024).toFixed(2)} MB
                   </p>
-                </div>
-              ) : (
-                <div>
-                  <p className="text-lg text-gray-600">Drop video file here or click to browse</p>
-                  <p className="text-sm text-gray-400 mt-2">Supports MP4, MOV, AVI (max 4MB for demo)</p>
-                </div>
-              )}
-            </div>
-
-            <div className="mt-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Target Language
-              </label>
-              <select
-                value={targetLanguage}
-                onChange={(e) => setTargetLanguage(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                {languages.map((lang) => (
-                  <option key={lang.code} value={lang.code}>
-                    {lang.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="mt-6 bg-gray-50 p-4 rounded-lg space-y-4">
-              {/* Auto Dubbing Toggle */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Auto Dubbing
-                  </label>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {useDubbingStudio
-                      ? 'Automatic dubbing with AI (recommended)'
-                      : 'Manual voice selection and audio generation'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setUseDubbingStudio(!useDubbingStudio)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    useDubbingStudio ? 'bg-blue-600' : 'bg-gray-300'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      useDubbingStudio ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </div>
-
-              {/* Fast Mode Toggle (only shown when Auto Dubbing is ON) */}
-              {useDubbingStudio && (
-                <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      ⚡ Fast Mode
-                    </label>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {useFastMode
-                        ? '1-2 min processing (audio only, no lip-sync)'
-                        : '5-30 min processing (full dubbing with lip-sync)'}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setUseFastMode(!useFastMode)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      useFastMode ? 'bg-green-600' : 'bg-orange-500'
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        useFastMode ? 'translate-x-6' : 'translate-x-1'
-                      }`}
-                    />
+                  <button className="text-purple-600 text-sm font-medium hover:underline">
+                    Choose different file
                   </button>
                 </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-500 rounded-3xl flex items-center justify-center mx-auto">
+                    <span className="text-4xl">📹</span>
+                  </div>
+                  <div>
+                    <p className="text-xl font-semibold text-gray-900 mb-2">
+                      Drop your video here
+                    </p>
+                    <p className="text-gray-500">or click to browse</p>
+                  </div>
+                  <p className="text-sm text-gray-400">
+                    Supports MP4, MOV, AVI • Max 50MB
+                  </p>
+                </div>
               )}
             </div>
 
-            <div className="mt-6">
-              {useDubbingStudio && !useFastMode && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-3">
-                  <p className="text-xs text-yellow-800">
-                    ⏱️ <strong>Please note:</strong> Full dubbing mode takes 5-15 minutes for short videos,
-                    and up to 20-30 minutes for longer videos. Includes audio extraction,
-                    translation, voice synthesis, and lip-sync alignment.
-                  </p>
+            {/* Language Selection */}
+            <div className="mt-8">
+              <label className="block text-lg font-semibold text-gray-900 mb-3">
+                Select Target Language
+              </label>
+              <div className="grid grid-cols-3 gap-3">
+                {languages.map((lang) => (
+                  <button
+                    key={lang.code}
+                    onClick={() => setTargetLanguage(lang.code)}
+                    className={`p-4 rounded-2xl border-2 font-semibold transition-all duration-200 ${
+                      targetLanguage === lang.code
+                        ? 'border-purple-500 bg-purple-50 text-purple-700'
+                        : 'border-gray-200 bg-white text-gray-700 hover:border-purple-300 hover:bg-purple-50'
+                    }`}
+                  >
+                    <div className="text-2xl mb-2">
+                      {lang.code === 'es' && '🇪🇸'}
+                      {lang.code === 'fr' && '🇫🇷'}
+                      {lang.code === 'it' && '🇮🇹'}
+                    </div>
+                    {lang.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Info Box */}
+            <div className="mt-8 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-2xl p-5">
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center flex-shrink-0">
+                  <span className="text-xl">✨</span>
                 </div>
-              )}
-              {useDubbingStudio && useFastMode && (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-3">
-                  <p className="text-xs text-green-800">
-                    ⚡ <strong>Fast Mode:</strong> Completes in 1-2 minutes! Uses OpenAI Whisper + GPT-4 + ElevenLabs TTS.
-                    Audio-only dubbing (no lip-sync). Max file size: 25MB.
-                  </p>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-gray-900 mb-2">What happens next?</h3>
+                  <ul className="text-sm text-gray-700 space-y-1">
+                    <li>• AI transcribes your video with speaker detection</li>
+                    <li>• You review and edit the English transcript</li>
+                    <li>• AI translates to your chosen language</li>
+                    <li>• Professional voice cloning for all speakers</li>
+                    <li>• Download your dubbed video (takes 2-5 minutes)</li>
+                  </ul>
                 </div>
-              )}
+              </div>
+            </div>
+
+            {/* Start Button */}
+            <div className="mt-8">
               <button
                 onClick={fastDubVideo}
                 disabled={!videoFile || isLoading}
-                className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition"
+                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-5 px-8 rounded-2xl text-lg font-bold hover:shadow-xl hover:scale-[1.02] disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all duration-200"
               >
-                {isLoading ? '🎤 Transcribing...' : '🎤 Start Transcription'}
+                {isLoading ? (
+                  <span className="flex items-center justify-center gap-3">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    Transcribing Audio...
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center gap-2">
+                    <span>Start Translation</span>
+                    <span>→</span>
+                  </span>
+                )}
               </button>
             </div>
           </div>

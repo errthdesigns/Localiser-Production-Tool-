@@ -1,18 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { AssemblyAI } from 'assemblyai';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 300; // 5 minutes for transcription
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('=== Starting Video Analysis with Gemini ===');
+    console.log('=== Starting Transcription with AssemblyAI ===');
 
-    const geminiApiKey = process.env.GEMINI_API_KEY;
+    const assemblyaiApiKey = process.env.ASSEMBLYAI_API_KEY;
 
-    if (!geminiApiKey) {
+    if (!assemblyaiApiKey) {
       return NextResponse.json(
-        { error: 'Gemini API key not configured' },
+        { error: 'AssemblyAI API key not configured' },
         { status: 500 }
       );
     }
@@ -27,70 +28,69 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('Analyzing video with Gemini 2.0 Flash...');
+    console.log('Transcribing video with AssemblyAI (professional speaker diarization)...');
     const startTime = Date.now();
 
-    // Step 1: Download video
-    console.log('[1/2] Downloading video...');
-    const videoResponse = await fetch(videoUrl);
-    const arrayBuffer = await videoResponse.arrayBuffer();
-    const videoBase64 = Buffer.from(arrayBuffer).toString('base64');
+    // Initialize AssemblyAI client
+    const client = new AssemblyAI({
+      apiKey: assemblyaiApiKey,
+    });
 
-    console.log('Video downloaded, size:', arrayBuffer.byteLength, 'bytes');
+    console.log('Submitting transcription job with speaker diarization...');
 
-    // Step 2: Analyze with Gemini (video understanding + speaker detection)
-    console.log('[2/2] Analyzing video with Gemini for transcription and speaker detection...');
+    // Submit transcription with speaker diarization
+    const transcript = await client.transcripts.transcribe({
+      audio: videoUrl,
+      speaker_labels: true, // Enable speaker diarization
+      language_code: sourceLanguage || 'en',
+    });
 
-    const genAI = new GoogleGenerativeAI(geminiApiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
-
-    const prompt = `Watch this video carefully and transcribe all spoken dialogue with accurate speaker attribution.
-
-CRITICAL INSTRUCTIONS:
-
-1. **WATCH THE VIDEO** - Observe who is speaking at each moment by watching their mouth movements and visual cues
-2. **ACCURATE SPEAKER DETECTION** - Assign speakers (SPEAKER 1, SPEAKER 2, etc.) based on VISUAL observation of who is actually talking
-3. **TRANSCRIBE ALL DIALOGUE** - Write down everything that is spoken
-4. **CLEAN FORMAT** - Use simple formatting:
-   - Each speaker on their own line
-   - Format: "SPEAKER 1: [dialogue]"
-   - Natural paragraph breaks between speakers
-   - NO production markers
-   - ONLY spoken words
-
-EXAMPLE OUTPUT:
-
-SPEAKER 1:
-That's a good product!
-
-SPEAKER 2:
-You don't actually think you're a toilet cleaner, do you?
-
-SPEAKER 1:
-Unlike you, I immerse myself in crafting character.
-
-Return ONLY the dialogue with accurate speaker labels based on visual observation.`;
-
-    const result = await model.generateContent([
-      {
-        inlineData: {
-          mimeType: 'video/mp4',
-          data: videoBase64
-        }
-      },
-      { text: prompt }
-    ]);
-
-    const formattedScript = result.response.text();
+    if (transcript.status === 'error') {
+      throw new Error(`Transcription failed: ${transcript.error}`);
+    }
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(`=== Video Analysis Complete in ${duration}s ===`);
+    console.log(`=== Transcription Complete in ${duration}s ===`);
+
+    // Format the transcript with speaker labels
+    let formattedScript = '';
+    let currentSpeaker = '';
+    let currentText = '';
+
+    if (transcript.utterances && transcript.utterances.length > 0) {
+      console.log('Processing', transcript.utterances.length, 'utterances');
+
+      for (const utterance of transcript.utterances) {
+        const speaker = `SPEAKER ${utterance.speaker}`;
+
+        if (speaker !== currentSpeaker) {
+          // New speaker - flush previous speaker's text
+          if (currentText.trim()) {
+            formattedScript += `${currentSpeaker}:\n${currentText.trim()}\n\n`;
+          }
+          currentSpeaker = speaker;
+          currentText = utterance.text + ' ';
+        } else {
+          // Same speaker - accumulate text
+          currentText += utterance.text + ' ';
+        }
+      }
+
+      // Flush final speaker
+      if (currentText.trim()) {
+        formattedScript += `${currentSpeaker}:\n${currentText.trim()}\n`;
+      }
+    } else {
+      // Fallback to words if no utterances
+      formattedScript = transcript.text || '';
+    }
+
     console.log('Transcript preview:', formattedScript.substring(0, 200) + '...');
 
     return NextResponse.json({
       success: true,
       text: formattedScript,
-      rawText: formattedScript, // Gemini provides the formatted transcript directly
+      rawText: transcript.text || '',
       language: sourceLanguage || 'en',
       processingTime: duration,
     });
