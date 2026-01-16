@@ -57,23 +57,31 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log('Starting ElevenLabs dubbing process...');
+    console.log('=== Starting ElevenLabs dubbing process ===');
+    console.log('Video file:', videoFile.name, '|', (videoFile.size / 1024 / 1024).toFixed(2), 'MB');
     console.log('Target language:', targetLanguage);
     console.log('Source language:', sourceLanguage || 'auto-detect');
 
     const dubbingService = new ElevenLabsDubbingService(elevenLabsApiKey);
 
     // Create dubbing job
+    console.log('Creating dubbing job with ElevenLabs API...');
     const job = await dubbingService.createDubbingJob(
       videoFile,
       targetLanguage,
       sourceLanguage
     );
 
+    console.log('=== Dubbing job created successfully ===');
+    console.log('Dubbing ID:', job.dubbing_id);
+    console.log('Initial Status:', job.status);
+    console.log('Target Languages:', job.target_languages);
+
     return NextResponse.json({
       success: true,
       dubbingId: job.dubbing_id,
       status: job.status,
+      targetLanguages: job.target_languages,
       message: 'Dubbing job created successfully. Use /api/dub-video/status to check progress.'
     });
   } catch (error) {

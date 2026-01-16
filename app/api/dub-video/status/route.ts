@@ -25,17 +25,26 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    console.log(`[Status Check] Checking dubbing status for ID: ${dubbingId}`);
+
     const dubbingService = new ElevenLabsDubbingService(elevenLabsApiKey);
     const status = await dubbingService.getDubbingStatus(dubbingId);
 
-    return NextResponse.json({
+    console.log(`[Status Check] ElevenLabs response:`, JSON.stringify(status, null, 2));
+
+    const responseData = {
       dubbingId: status.dubbing_id,
       status: status.status,
       targetLanguages: status.target_languages,
       ready: status.status === 'dubbed'
-    });
+    };
+
+    console.log(`[Status Check] Returning:`, JSON.stringify(responseData, null, 2));
+
+    return NextResponse.json(responseData);
   } catch (error) {
-    console.error('Failed to get dubbing status:', error);
+    console.error('[Status Check] ERROR:', error);
+    console.error('[Status Check] Error details:', error instanceof Error ? error.stack : 'No stack trace');
 
     return NextResponse.json(
       {

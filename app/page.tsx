@@ -201,36 +201,58 @@ export default function Home() {
   };
 
   const pollDubbingStatus = async (jobId: string) => {
-    const maxPolls = 120; // 10 minutes max (120 * 5 seconds)
+    const maxPolls = 360; // 30 minutes max (360 * 5 seconds)
     let polls = 0;
     const startTime = Date.now();
 
     while (polls < maxPolls) {
       try {
         const response = await fetch(`/api/dub-video/status?dubbingId=${jobId}`);
+
+        if (!response.ok) {
+          console.error('Status check failed:', response.status, response.statusText);
+          throw new Error(`Failed to check dubbing status: ${response.statusText}`);
+        }
+
         const data = await response.json();
 
-        const elapsedMinutes = Math.floor((Date.now() - startTime) / 60000);
-        const statusMessage = data.status === 'dubbing'
-          ? `Dubbing in progress (${elapsedMinutes}m elapsed)...`
-          : `Status: ${data.status} (${elapsedMinutes}m elapsed)...`;
+        const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+        const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+        const remainingSeconds = elapsedSeconds % 60;
 
-        console.log('Dubbing status:', data.status, 'Poll:', polls);
+        const timeStr = `${elapsedMinutes}m ${remainingSeconds}s`;
+        const statusMessage = data.status === 'dubbing'
+          ? `Dubbing in progress - Processing audio and video sync (${timeStr} elapsed)...`
+          : data.status === 'dubbed'
+          ? `Dubbing complete! Downloading...`
+          : `Status: ${data.status} (${timeStr} elapsed)...`;
+
+        console.log(`[Poll ${polls}/${maxPolls}] Status: "${data.status}" | Time: ${timeStr} | Ready: ${data.ready}`);
+        console.log('Full status response:', JSON.stringify(data, null, 2));
         setProgress(statusMessage);
 
         if (data.ready) {
           setProgress('Dubbing complete! Downloading video...');
+          console.log('Downloading dubbed video for language:', targetLanguage);
+
           // Download the dubbed video
           const videoUrl = `/api/dub-video/download?dubbingId=${jobId}&targetLanguage=${targetLanguage}`;
           const videoResponse = await fetch(videoUrl);
+
+          if (!videoResponse.ok) {
+            throw new Error(`Failed to download video: ${videoResponse.statusText}`);
+          }
+
           const videoBlob = await videoResponse.blob();
+          console.log('Video downloaded successfully, size:', videoBlob.size, 'bytes');
           setGeneratedVideo(videoBlob);
           setProgress('');
           return;
         }
 
         if (data.status === 'failed') {
-          throw new Error('Dubbing job failed');
+          console.error('Dubbing job failed!');
+          throw new Error('Dubbing job failed. Please try again.');
         }
 
         // Wait 5 seconds before next poll
@@ -242,7 +264,7 @@ export default function Home() {
       }
     }
 
-    throw new Error('Dubbing timed out after 10 minutes. Please try again with a shorter video.');
+    throw new Error('Dubbing timed out after 30 minutes. ElevenLabs may be experiencing high load. Please try again later.');
   };
 
   const generateAudio = async (text: string) => {
@@ -460,15 +482,26 @@ export default function Home() {
               </div>
             </div>
 
-            <button
-              onClick={useDubbingStudio ? dubVideoWithStudio : analyzeVoice}
-              disabled={!videoFile || isLoading}
-              className="mt-6 w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition"
-            >
-              {isLoading
-                ? (useDubbingStudio ? 'Dubbing in progress...' : 'Analyzing...')
-                : (useDubbingStudio ? 'Start Auto Dubbing' : 'Analyze Video & Find Voices')}
-            </button>
+            <div className="mt-6">
+              {useDubbingStudio && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-3">
+                  <p className="text-xs text-yellow-800">
+                    ⏱️ <strong>Please note:</strong> ElevenLabs dubbing typically takes 5-15 minutes for short videos,
+                    and up to 20-30 minutes for longer or complex videos. The process includes audio extraction,
+                    translation, voice synthesis, and lip-sync alignment.
+                  </p>
+                </div>
+              )}
+              <button
+                onClick={useDubbingStudio ? dubVideoWithStudio : analyzeVoice}
+                disabled={!videoFile || isLoading}
+                className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition"
+              >
+                {isLoading
+                  ? (useDubbingStudio ? 'Dubbing in progress...' : 'Analyzing...')
+                  : (useDubbingStudio ? 'Start Auto Dubbing (5-30 min)' : 'Analyze Video & Find Voices')}
+              </button>
+            </div>
           </div>
         )}
 
