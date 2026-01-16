@@ -125,7 +125,7 @@ export default function Home() {
       const data = await response.json();
       setVoiceRecommendations(data);
       setSelectedVoiceId(data.recommendedVoices[0]?.voiceId || '');
-      setStep('voice-selection');
+      setStep('edit-english'); // Skip voice selection in new workflow
     } catch (err) {
       console.error('Voice analysis error:', err);
       setError(err instanceof Error ? err.message : 'Voice analysis failed');
@@ -496,7 +496,7 @@ export default function Home() {
       setStep('complete');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Processing failed');
-      setStep('voice-selection');
+      setStep('edit-translation');
     } finally {
       setIsLoading(false);
       setProgress('');
@@ -526,14 +526,14 @@ export default function Home() {
 
         {/* Progress Steps */}
         <div className="flex items-center justify-between mb-8">
-          {['upload', 'voice-selection', 'processing', 'complete'].map((s, i) => (
+          {['upload', 'edit-english', 'edit-translation', 'complete'].map((s, i) => (
             <div key={s} className="flex items-center">
               <div
                 className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
-                  step === s
+                  step === s || (step === 'processing' && s === 'complete')
                     ? 'bg-blue-600 text-white'
-                    : ['upload', 'voice-selection', 'processing', 'complete'].indexOf(step) >
-                      ['upload', 'voice-selection', 'processing', 'complete'].indexOf(s)
+                    : ['upload', 'edit-english', 'edit-translation', 'processing', 'complete'].indexOf(step) >
+                      ['upload', 'edit-english', 'edit-translation', 'processing', 'complete'].indexOf(s)
                     ? 'bg-green-500 text-white'
                     : 'bg-gray-300 text-gray-600'
                 }`}
@@ -543,7 +543,7 @@ export default function Home() {
               {i < 3 && (
                 <div
                   className={`w-20 h-1 mx-2 ${
-                    ['upload', 'voice-selection', 'processing', 'complete'].indexOf(step) > i
+                    ['upload', 'edit-english', 'edit-translation', 'processing', 'complete'].indexOf(step) > i
                       ? 'bg-green-500'
                       : 'bg-gray-300'
                   }`}
@@ -841,70 +841,7 @@ export default function Home() {
           </div>
         )}
 
-        {/* Step 3: Voice Selection */}
-        {step === 'voice-selection' && voiceRecommendations && (
-          <div className="bg-white rounded-lg shadow-lg p-8">
-            <h2 className="text-2xl font-semibold mb-4">Select Voice</h2>
-
-            <div className="bg-blue-50 p-4 rounded-lg mb-6">
-              <p className="text-sm text-gray-700">{voiceRecommendations.summary}</p>
-            </div>
-
-            <div className="space-y-4">
-              {voiceRecommendations.recommendedVoices.map((voice) => (
-                <div
-                  key={voice.voiceId}
-                  onClick={() => setSelectedVoiceId(voice.voiceId)}
-                  className={`border-2 rounded-lg p-4 cursor-pointer transition ${
-                    selectedVoiceId === voice.voiceId
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 hover:border-blue-300'
-                  }`}
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="font-semibold text-lg">{voice.name}</h3>
-                      <p className="text-sm text-gray-600 mt-1">
-                        Match Score: <span className="font-semibold">{voice.matchScore}%</span>
-                      </p>
-                      <ul className="mt-2 space-y-1">
-                        {voice.matchReasons.map((reason, i) => (
-                          <li key={i} className="text-sm text-gray-600 flex items-start">
-                            <span className="text-green-500 mr-2">✓</span>
-                            {reason}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                    {voice.previewUrl && (
-                      <audio controls className="ml-4">
-                        <source src={voice.previewUrl} type="audio/mpeg" />
-                      </audio>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex gap-4 mt-6">
-              <button
-                onClick={() => setStep('upload')}
-                className="flex-1 bg-gray-200 text-gray-700 py-3 px-6 rounded-lg font-semibold hover:bg-gray-300 transition"
-              >
-                Back
-              </button>
-              <button
-                onClick={processLocalization}
-                disabled={!selectedVoiceId || isLoading}
-                className="flex-1 bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition"
-              >
-                Generate Localized Audio
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 3: Processing */}
+        {/* Step 4: Processing */}
         {step === 'processing' && (
           <div className="bg-white rounded-lg shadow-lg p-8 text-center">
             <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
