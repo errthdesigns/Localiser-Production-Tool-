@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { transcript, sourceLanguage, targetLanguage, videoUrl } = body;
+    const { transcript, translatedText: providedTranslation, sourceLanguage, targetLanguage, videoUrl } = body;
 
     if (!transcript || !targetLanguage) {
       return NextResponse.json(
@@ -48,44 +48,52 @@ export async function POST(request: NextRequest) {
     console.log('Target language:', targetLanguage);
     console.log('Transcript length:', transcript.length, 'characters');
     console.log('Video URL:', videoUrl);
+    console.log('Pre-translated text provided:', !!providedTranslation);
 
-    // Step 1: Translate with GPT-4
-    console.log('[1/4] Translating with GPT-4...');
     const startTime = Date.now();
+    let translatedText: string;
 
-    const openai = new OpenAI({ apiKey: openaiApiKey });
+    // Step 1: Translate with GPT-4 (or use provided translation)
+    if (providedTranslation) {
+      console.log('[1/4] Using provided translation (skipping GPT-4 translation)...');
+      translatedText = providedTranslation;
+      console.log('Using pre-translated text:', translatedText.substring(0, 150) + '...');
+    } else {
+      console.log('[1/4] Translating with GPT-4...');
 
-    const languageNames: Record<string, string> = {
-      en: 'English',
-      es: 'Spanish',
-      fr: 'French',
-      de: 'German',
-      it: 'Italian',
-      pt: 'Portuguese',
-      ja: 'Japanese',
-      ko: 'Korean',
-      zh: 'Chinese',
-    };
+      const openai = new OpenAI({ apiKey: openaiApiKey });
 
-    const translationResponse = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'system',
-          content: `You are a professional translator. Translate the following text from ${languageNames[sourceLanguage] || sourceLanguage} to ${languageNames[targetLanguage] || targetLanguage}. Maintain the same tone, style, and natural flow. Only return the translated text, nothing else.`
-        },
-        {
-          role: 'user',
-          content: transcript
-        }
-      ],
-      temperature: 0.3,
-    });
+      const languageNames: Record<string, string> = {
+        en: 'English',
+        es: 'Spanish',
+        fr: 'French',
+        de: 'German',
+        it: 'Italian',
+        pt: 'Portuguese',
+        ja: 'Japanese',
+        ko: 'Korean',
+        zh: 'Chinese',
+      };
 
-    const translatedText = translationResponse.choices[0].message.content || transcript;
+      const translationResponse = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'system',
+            content: `You are a professional translator. Translate the following text from ${languageNames[sourceLanguage] || sourceLanguage} to ${languageNames[targetLanguage] || targetLanguage}. Maintain the same tone, style, and natural flow. Only return the translated text, nothing else.`
+          },
+          {
+            role: 'user',
+            content: transcript
+          }
+        ],
+        temperature: 0.3,
+      });
 
-    console.log('Translation complete!');
-    console.log('Translated text:', translatedText.substring(0, 150) + '...');
+      translatedText = translationResponse.choices[0].message.content || transcript;
+      console.log('Translation complete!');
+      console.log('Translated text:', translatedText.substring(0, 150) + '...');
+    }
 
     // Extract only speaker dialogue for TTS (remove production markers)
     // Remove lines that start with [ like [SUPER:, [TITLE:, [LOCKUP:, [SCENE:, etc.

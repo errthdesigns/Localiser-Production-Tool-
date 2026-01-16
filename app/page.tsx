@@ -16,7 +16,7 @@ interface VoiceRecommendations {
   summary: string;
 }
 
-type Step = 'upload' | 'review-transcript' | 'voice-selection' | 'processing' | 'complete';
+type Step = 'upload' | 'edit-english' | 'edit-translation' | 'processing' | 'complete';
 
 export default function Home() {
   const [step, setStep] = useState<Step>('upload');
@@ -261,11 +261,11 @@ export default function Home() {
       console.log('Detected language:', data.language);
       console.log('Transcript:', data.text.substring(0, 100));
 
-      // Set transcript and show review screen
+      // Set transcript and show edit screen
       setOriginalText(data.text);
       setEditableTranscript(data.text);
       setDetectedLanguage(data.language);
-      setStep('review-transcript');
+      setStep('edit-english');
 
     } catch (err) {
       console.error('Transcription error:', err);
@@ -276,12 +276,13 @@ export default function Home() {
     }
   };
 
-  const loadTranslationPreview = async () => {
-    setIsLoadingPreview(true);
+  const translateScript = async () => {
+    setIsLoading(true);
     setError('');
+    setProgress('Translating script to ' + languages.find(l => l.code === targetLanguage)?.name + '...');
 
     try {
-      console.log('Loading translation preview...');
+      console.log('Translating script...');
 
       const response = await fetch('/api/translate-preview', {
         method: 'POST',
@@ -295,39 +296,41 @@ export default function Home() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Translation preview failed');
+        throw new Error(errorData.error || 'Translation failed');
       }
 
       const data = await response.json();
 
-      console.log('Translation preview loaded!');
-      setPreviewTranslation(data.translatedText);
-      setShowPreview(true);
+      console.log('Translation complete!');
+      setTranslatedText(data.translatedText);
+      setStep('edit-translation');
 
     } catch (err) {
-      console.error('Preview error:', err);
-      setError(err instanceof Error ? err.message : 'Translation preview failed');
+      console.error('Translation error:', err);
+      setError(err instanceof Error ? err.message : 'Translation failed');
     } finally {
-      setIsLoadingPreview(false);
+      setIsLoading(false);
+      setProgress('');
     }
   };
 
   const completeDubbing = async () => {
     setIsLoading(true);
     setError('');
-    setProgress('Translating and generating audio...');
+    setProgress('Generating dubbed video...');
     setStep('processing');
 
     try {
-      console.log('Starting translation and dubbing with edited transcript...');
+      console.log('Starting dubbing with translated text...');
 
-      // Step 2: Translate and generate dubbed video with edited transcript
-      setProgress('🌍 Translating to ' + languages.find(l => l.code === targetLanguage)?.name + '...');
+      // Use the already-translated text for dubbing
+      setProgress('🎤 Generating ' + languages.find(l => l.code === targetLanguage)?.name + ' audio...');
       const response = await fetch('/api/translate-and-dub', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          transcript: editableTranscript,
+          transcript: editableTranscript, // Original English for reference
+          translatedText: translatedText, // Already translated text (skip translation step)
           sourceLanguage: detectedLanguage,
           targetLanguage: targetLanguage,
           videoUrl: videoUrl, // Pass video URL for combining with dubbed audio
@@ -343,20 +346,18 @@ export default function Home() {
 
       console.log('Dubbing complete!');
       console.log('Processing time:', data.processingTime, 'seconds');
-      console.log('Translated:', data.translatedText.substring(0, 100));
 
       // Convert base64 video to blob
       const videoBytes = Uint8Array.from(atob(data.videoData), c => c.charCodeAt(0));
       const videoBlob = new Blob([videoBytes], { type: 'video/mp4' });
 
       setGeneratedVideo(videoBlob);
-      setTranslatedText(data.translatedText);
       setStep('complete');
 
     } catch (err) {
       console.error('Dubbing error:', err);
       setError(err instanceof Error ? err.message : 'Dubbing failed');
-      setStep('review-transcript');
+      setStep('edit-translation');
     } finally {
       setIsLoading(false);
       setProgress('');
@@ -694,30 +695,20 @@ export default function Home() {
                 </div>
               )}
               <button
-                onClick={
-                  useDubbingStudio
-                    ? (useFastMode ? fastDubVideo : dubVideoWithStudio)
-                    : analyzeVoice
-                }
+                onClick={fastDubVideo}
                 disabled={!videoFile || isLoading}
                 className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition"
               >
-                {isLoading
-                  ? (useDubbingStudio
-                      ? (useFastMode ? '⚡ Fast dubbing...' : 'Dubbing in progress...')
-                      : 'Analyzing...')
-                  : (useDubbingStudio
-                      ? (useFastMode ? '⚡ Start Fast Dubbing (1-2 min)' : 'Start Full Dubbing (5-30 min)')
-                      : 'Analyze Video & Find Voices')}
+                {isLoading ? '🎤 Transcribing...' : '🎤 Start Transcription'}
               </button>
             </div>
           </div>
         )}
 
-        {/* Step 2: Review Transcript */}
-        {step === 'review-transcript' && (
+        {/* Step 2: Edit English Script */}
+        {step === 'edit-english' && (
           <div className="bg-white rounded-lg shadow-lg p-8">
-            <h2 className="text-2xl font-semibold mb-4">📝 Review & Edit Video Script</h2>
+            <h2 className="text-2xl font-semibold mb-4">📝 Edit English Script</h2>
 
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
               <p className="text-sm text-blue-800">
@@ -739,62 +730,22 @@ export default function Home() {
                   <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded">[LOCKUP]</span>
                   <span className="bg-orange-100 text-orange-800 px-2 py-1 rounded">[SCENE]</span>
                 </div>
-                <button
-                  onClick={loadTranslationPreview}
-                  disabled={isLoadingPreview || !editableTranscript.trim()}
-                  className="px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 disabled:bg-gray-400 transition"
-                >
-                  {isLoadingPreview ? '⏳ Loading...' : showPreview ? '🔄 Refresh Preview' : '👁️ Preview Translation'}
-                </button>
               </div>
 
-              {showPreview ? (
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Original ({detectedLanguage.toUpperCase()})
-                      <span className="text-gray-500 font-normal ml-2">({editableTranscript.length} chars)</span>
-                    </label>
-                    <textarea
-                      value={editableTranscript}
-                      onChange={(e) => {
-                        setEditableTranscript(e.target.value);
-                        setShowPreview(false); // Hide preview when editing
-                      }}
-                      rows={16}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm leading-relaxed bg-gray-50"
-                      placeholder="Edit script here..."
-                      style={{ lineHeight: '1.6' }}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Translated ({languages.find(l => l.code === targetLanguage)?.name})
-                      <span className="text-gray-500 font-normal ml-2">({previewTranslation.length} chars)</span>
-                    </label>
-                    <div className="w-full px-4 py-3 border border-green-300 rounded-lg font-mono text-sm leading-relaxed bg-green-50 overflow-y-auto" style={{ height: '400px', lineHeight: '1.6' }}>
-                      {previewTranslation.split('\n').map((line, i) => (
-                        <div key={i}>{line || '\u00A0'}</div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Video Production Script
-                    <span className="text-gray-500 font-normal ml-2">({editableTranscript.length} characters)</span>
-                  </label>
-                  <textarea
-                    value={editableTranscript}
-                    onChange={(e) => setEditableTranscript(e.target.value)}
-                    rows={16}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm leading-relaxed bg-gray-50"
-                    placeholder="Edit script here..."
-                    style={{ lineHeight: '1.6' }}
-                  />
-                </div>
-              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  English Script
+                  <span className="text-gray-500 font-normal ml-2">({editableTranscript.length} characters)</span>
+                </label>
+                <textarea
+                  value={editableTranscript}
+                  onChange={(e) => setEditableTranscript(e.target.value)}
+                  rows={16}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm leading-relaxed bg-gray-50"
+                  placeholder="Edit script here..."
+                  style={{ lineHeight: '1.6' }}
+                />
+              </div>
             </div>
 
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
@@ -817,11 +768,74 @@ export default function Home() {
                 ← Back
               </button>
               <button
-                onClick={completeDubbing}
+                onClick={translateScript}
                 disabled={isLoading || !editableTranscript.trim()}
-                className="flex-2 bg-green-600 text-white py-3 px-8 rounded-lg font-semibold hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition"
+                className="flex-2 bg-blue-600 text-white py-3 px-8 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition"
               >
-                {isLoading ? 'Processing...' : '✓ Approve & Continue to Dubbing'}
+                {isLoading ? 'Translating...' : '🌍 Translate to ' + languages.find(l => l.code === targetLanguage)?.name}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Edit Translation (Side-by-Side) */}
+        {step === 'edit-translation' && (
+          <div className="bg-white rounded-lg shadow-lg p-8">
+            <h2 className="text-2xl font-semibold mb-4">🌍 Review Translation</h2>
+
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+              <p className="text-sm text-green-800">
+                <strong>Translation:</strong> {detectedLanguage.toUpperCase()} → {languages.find(l => l.code === targetLanguage)?.name}
+              </p>
+              <p className="text-xs text-green-600 mt-2">
+                ✏️ Review both the English and translated scripts. You can edit both sides to fix any errors!
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  English Script
+                  <span className="text-gray-500 font-normal ml-2">({editableTranscript.length} chars)</span>
+                </label>
+                <textarea
+                  value={editableTranscript}
+                  onChange={(e) => setEditableTranscript(e.target.value)}
+                  rows={16}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm leading-relaxed bg-gray-50"
+                  placeholder="Edit English script..."
+                  style={{ lineHeight: '1.6' }}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {languages.find(l => l.code === targetLanguage)?.name} Translation
+                  <span className="text-gray-500 font-normal ml-2">({translatedText.length} chars)</span>
+                </label>
+                <textarea
+                  value={translatedText}
+                  onChange={(e) => setTranslatedText(e.target.value)}
+                  rows={16}
+                  className="w-full px-4 py-3 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent font-mono text-sm leading-relaxed bg-green-50"
+                  placeholder="Edit translation..."
+                  style={{ lineHeight: '1.6' }}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <button
+                onClick={() => setStep('edit-english')}
+                className="flex-1 bg-gray-200 text-gray-700 py-3 px-6 rounded-lg font-semibold hover:bg-gray-300 transition"
+              >
+                ← Back to English
+              </button>
+              <button
+                onClick={completeDubbing}
+                disabled={isLoading || !translatedText.trim()}
+                className="flex-2 bg-purple-600 text-white py-3 px-8 rounded-lg font-semibold hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition"
+              >
+                {isLoading ? 'Dubbing...' : '🎬 Generate Dubbed Video'}
               </button>
             </div>
           </div>

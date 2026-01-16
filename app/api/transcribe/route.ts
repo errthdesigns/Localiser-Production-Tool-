@@ -82,19 +82,28 @@ export async function POST(request: NextRequest) {
 
     const scriptPrompt = `You are a professional video script formatter analyzing an advertisement. Convert the following raw transcript into a properly formatted video production script.
 
-CRITICAL REQUIREMENTS:
+CRITICAL REQUIREMENTS FOR SPEAKER IDENTIFICATION (READ THIS CAREFULLY):
 
-1. **IDENTIFY ALL SPEAKERS WITH EXTREME CARE**:
-   - Listen for voice changes, gender, tone, and speaking style
-   - EVERY time the voice changes = NEW SPEAKER
-   - Label them as SPEAKER 1, SPEAKER 2, SPEAKER 3, etc. in order of FIRST appearance
-   - Include VOICEOVER or NARRATOR if there's an offscreen voice
-   - Do NOT combine multiple people into fewer speakers
-   - Do NOT attribute long dialogue blocks to one speaker if the voice changes mid-block
-   - If someone says just ONE brief thing, give them ONE line only
-   - Pay attention to conversational turn-taking (back-and-forth dialogue)
+1. **COUNT EVERY VOICE CHANGE AS A NEW SPEAKER**:
+   - In a conversation, people take turns speaking: A says something → B responds → A replies → B replies
+   - EVERY voice change = NEW SPEAKER NUMBER
+   - Example: If you hear "Hello" (person 1) then "Hi there" (person 2) then "How are you?" (person 1 again) then "Good!" (person 2 again)
+     That's SPEAKER 1, SPEAKER 2, SPEAKER 1, SPEAKER 2 - NOT all SPEAKER 1 or all SPEAKER 2
 
-2. **CAPTURE ALL ON-SCREEN TEXT** (THIS IS CRITICAL):
+2. **STRICTLY FOLLOW THESE RULES**:
+   - Label speakers as SPEAKER 1, SPEAKER 2, SPEAKER 3, etc. in order of FIRST appearance
+   - If someone appears only ONCE in the video saying ONE brief line, they should have EXACTLY ONE line in the script
+   - DO NOT give SPEAKER 3 multiple long dialogue blocks if they only say one short thing
+   - DO NOT merge different people's dialogue into one speaker
+   - Pay attention to conversational back-and-forth - speakers alternate
+
+3. **RED FLAGS - If you see these, you're doing it WRONG**:
+   - ❌ SPEAKER 3 has 5+ lines when they only said one thing
+   - ❌ SPEAKER 2 is having a conversation with themselves (dialogue without responses)
+   - ❌ All dialogue is attributed to just 1-2 speakers when clearly 3+ people are talking
+   - ✅ Correct: Each person gets their own speaker number, brief speakers get 1-2 lines max
+
+4. **CAPTURE ALL ON-SCREEN TEXT** (THIS IS CRITICAL):
    - Look for brand names, product names, and logos
    - Call-to-action text (e.g., "TRY NOW", "BUY NOW", "SHOP TODAY")
    - Taglines and slogans (e.g., "CLEAN THE [BRAND] WAY")
@@ -104,17 +113,17 @@ CRITICAL REQUIREMENTS:
    - ANY text overlay that appears on screen
    - Format as: [SUPER: "exact text as shown"]
 
-3. **TITLES/GRAPHICS**:
+5. **TITLES/GRAPHICS**:
    - Opening title cards: [TITLE: "text"]
    - Brand lockups and logos: [LOCKUP: Brand Name Logo]
    - Product graphics: [GRAPHIC: description]
 
-4. **SCENE DESCRIPTIONS**:
+6. **SCENE DESCRIPTIONS**:
    - Add context: [SCENE: Product demonstration in bathroom]
    - Note scene changes: [SCENE: Close-up of product]
    - Note character actions: [SCENE: SPEAKER 2 looks frustrated]
 
-5. **TIMING NOTES**:
+7. **TIMING NOTES**:
    - Music cues: [MUSIC: Upbeat background]
    - Sound effects: [SFX: description]
    - Pauses: [PAUSE]
