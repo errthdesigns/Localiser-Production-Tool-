@@ -21,6 +21,7 @@ type Step = 'upload' | 'review-transcript' | 'voice-selection' | 'processing' | 
 export default function Home() {
   const [step, setStep] = useState<Step>('upload');
   const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoUrl, setVideoUrl] = useState<string>(''); // Store the uploaded video URL
   const [targetLanguage, setTargetLanguage] = useState('es');
   const [useDubbingStudio, setUseDubbingStudio] = useState(true); // Default to dubbing studio
   const [useFastMode, setUseFastMode] = useState(true); // Default to fast mode (1-2 min)
@@ -236,6 +237,7 @@ export default function Home() {
       });
 
       console.log('Video uploaded to blob:', blob.url);
+      setVideoUrl(blob.url); // Save video URL to state
 
       // Step 1: Transcribe only
       setProgress('🎤 Transcribing audio with AI...');
@@ -319,7 +321,7 @@ export default function Home() {
     try {
       console.log('Starting translation and dubbing with edited transcript...');
 
-      // Step 2: Translate and generate audio with edited transcript
+      // Step 2: Translate and generate dubbed video with edited transcript
       setProgress('🌍 Translating to ' + languages.find(l => l.code === targetLanguage)?.name + '...');
       const response = await fetch('/api/translate-and-dub', {
         method: 'POST',
@@ -328,6 +330,7 @@ export default function Home() {
           transcript: editableTranscript,
           sourceLanguage: detectedLanguage,
           targetLanguage: targetLanguage,
+          videoUrl: videoUrl, // Pass video URL for combining with dubbed audio
         }),
       });
 
@@ -342,11 +345,11 @@ export default function Home() {
       console.log('Processing time:', data.processingTime, 'seconds');
       console.log('Translated:', data.translatedText.substring(0, 100));
 
-      // Convert base64 audio to blob
-      const audioBytes = Uint8Array.from(atob(data.audioData), c => c.charCodeAt(0));
-      const audioBlob = new Blob([audioBytes], { type: 'audio/mpeg' });
+      // Convert base64 video to blob
+      const videoBytes = Uint8Array.from(atob(data.videoData), c => c.charCodeAt(0));
+      const videoBlob = new Blob([videoBytes], { type: 'video/mp4' });
 
-      setGeneratedAudio(audioBlob);
+      setGeneratedVideo(videoBlob);
       setTranslatedText(data.translatedText);
       setStep('complete');
 
@@ -929,50 +932,22 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Video Preview with Dubbed Audio */}
-              {videoFile && generatedAudio && (
+              {/* Dubbed Video */}
+              {generatedVideo && (
                 <div className="border border-green-200 rounded-lg p-4 bg-green-50">
-                  <h3 className="font-semibold mb-2 text-green-900">🎬 Video with Dubbed Audio</h3>
+                  <h3 className="font-semibold mb-2 text-green-900">🎬 Dubbed Video</h3>
                   <p className="text-xs text-green-700 mb-3">
-                    Original video playing with AI-generated dubbed audio
+                    Your video with AI-translated {languages.find(l => l.code === targetLanguage)?.name} audio
                   </p>
-                  <video controls className="w-full rounded mb-2" muted>
-                    <source src={URL.createObjectURL(videoFile)} type="video/mp4" />
-                  </video>
-                  <audio controls className="w-full">
-                    <source src={URL.createObjectURL(generatedAudio)} type="audio/mpeg" />
-                  </audio>
-                </div>
-              )}
-
-              {generatedAudio && (
-                <div className="border border-gray-200 rounded-lg p-4">
-                  <h3 className="font-semibold mb-2">Generated Audio</h3>
-                  <audio controls className="w-full mb-2">
-                    <source src={URL.createObjectURL(generatedAudio)} type="audio/mpeg" />
-                  </audio>
-                  <a
-                    href={URL.createObjectURL(generatedAudio)}
-                    download="localized-audio.mp3"
-                    className="inline-block bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 transition"
-                  >
-                    Download Audio
-                  </a>
-                </div>
-              )}
-
-              {generatedVideo ? (
-                <div className="border border-gray-200 rounded-lg p-4">
-                  <h3 className="font-semibold mb-2">Lip-Synced Video</h3>
-                  <video controls className="w-full rounded mb-2">
+                  <video controls className="w-full rounded mb-4">
                     <source src={URL.createObjectURL(generatedVideo)} type="video/mp4" />
                   </video>
                   <a
                     href={URL.createObjectURL(generatedVideo)}
-                    download="localized-video.mp4"
+                    download={`dubbed-video-${targetLanguage}.mp4`}
                     className="inline-block bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 transition"
                   >
-                    Download Video
+                    Download Dubbed Video
                   </a>
                 </div>
               ) : (
