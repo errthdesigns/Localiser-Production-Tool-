@@ -410,7 +410,13 @@ export default function Home() {
 
     } catch (err) {
       console.error('Dubbing workflow error:', err);
-      setError(err instanceof Error ? err.message : 'Dubbing failed');
+      const errorMessage = err instanceof Error ? err.message : 'Dubbing failed';
+      console.error('Full error details:', {
+        message: errorMessage,
+        error: err,
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+      setError(`Dubbing failed: ${errorMessage}`);
       setStep('upload');
       setIsLoading(false);
       setProgress('');
@@ -469,8 +475,11 @@ export default function Home() {
   const fetchTranscripts = async (dubbingId: string, sourceLanguageCode: string, targetLanguageCode: string) => {
     try {
       setProgress('📄 Fetching transcripts...');
+      console.log(`Fetching transcripts for dubbing ${dubbingId}`);
+      console.log(`Source language: ${sourceLanguageCode}, Target language: ${targetLanguageCode}`);
 
       // Fetch source transcript
+      console.log('Fetching source transcript...');
       const sourceResponse = await fetch('/api/dubbing/transcript', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -482,15 +491,19 @@ export default function Home() {
       });
 
       if (!sourceResponse.ok) {
-        throw new Error('Failed to fetch source transcript');
+        const errorData = await sourceResponse.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('Source transcript fetch failed:', errorData);
+        throw new Error(`Failed to fetch source transcript: ${errorData.error || sourceResponse.statusText}`);
       }
 
       const sourceData = await sourceResponse.json();
+      console.log('Source transcript received, length:', sourceData.transcript?.length || 0);
       setSourceTranscript(sourceData.transcript);
       setEditableTranscript(sourceData.transcript);
       setOriginalText(sourceData.transcript);
 
       // Fetch target transcript
+      console.log('Fetching target transcript...');
       const targetResponse = await fetch('/api/dubbing/transcript', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -502,10 +515,13 @@ export default function Home() {
       });
 
       if (!targetResponse.ok) {
-        throw new Error('Failed to fetch target transcript');
+        const errorData = await targetResponse.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('Target transcript fetch failed:', errorData);
+        throw new Error(`Failed to fetch target transcript: ${errorData.error || targetResponse.statusText}`);
       }
 
       const targetData = await targetResponse.json();
+      console.log('Target transcript received, length:', targetData.transcript?.length || 0);
       setTargetTranscript(targetData.transcript);
       setTranslatedText(targetData.transcript);
 
@@ -516,6 +532,10 @@ export default function Home() {
 
     } catch (error) {
       console.error('Failed to fetch transcripts:', error);
+      console.error('Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       throw error;
     }
   };
