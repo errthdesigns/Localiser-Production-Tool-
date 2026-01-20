@@ -40,9 +40,16 @@ export default function Home() {
   const [previewTranslation, setPreviewTranslation] = useState<string>('');
   const [showPreview, setShowPreview] = useState<boolean>(false);
   const [isLoadingPreview, setIsLoadingPreview] = useState<boolean>(false);
+  const [disableVoiceCloning, setDisableVoiceCloning] = useState(false);
+  const [dropBackgroundAudio, setDropBackgroundAudio] = useState(false);
+  const [generatedAudioOnly, setGeneratedAudioOnly] = useState<Blob | null>(null);
+  const [sourceTranscript, setSourceTranscript] = useState<string>('');
+  const [targetTranscript, setTargetTranscript] = useState<string>('');
+  const [currentDubbingId, setCurrentDubbingId] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const languages = [
+    { code: 'en', name: 'English' },
     { code: 'es', name: 'Spanish' },
     { code: 'fr', name: 'French' },
     { code: 'it', name: 'Italian' },
@@ -276,7 +283,267 @@ export default function Home() {
     }
   };
 
+  const downloadAudioOnly = async () => {
+    if (!videoUrl) return;
+
+    setIsLoading(true);
+    setError('');
+    setProgress('Downloading audio-only translation...');
+
+    try {
+      const response = await fetch('/api/translate-and-dub', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoUrl: videoUrl,
+          targetLanguage: targetLanguage,
+          sourceLanguage: undefined,
+          disableVoiceCloning: disableVoiceCloning,
+          dropBackgroundAudio: dropBackgroundAudio,
+          audioOnly: true, // Request audio-only
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Audio download failed');
+      }
+
+      const data = await response.json();
+
+      if (!data.audioData) {
+        throw new Error('API did not return audio data.');
+      }
+
+      // Convert base64 audio to blob
+      const audioBytes = Uint8Array.from(atob(data.audioData), c => c.charCodeAt(0));
+      const audioBlob = new Blob([audioBytes], { type: 'audio/mpeg' });
+
+      setGeneratedAudioOnly(audioBlob);
+
+      // Automatically trigger download
+      const downloadUrl = URL.createObjectURL(audioBlob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = `dubbed-audio-${targetLanguage}.mp3`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(downloadUrl);
+
+    } catch (err) {
+      console.error('Audio download error:', err);
+      setError(err instanceof Error ? err.message : 'Audio download failed');
+    } finally {
+      setIsLoading(false);
+      setProgress('');
+    }
+  };
+
+  const directDubbing = async () => {
+    if (!videoFile) return;
+
+    setIsLoading(true);
+    setError('');
+    setProgress('Uploading video...');
+    setStep('processing');
+
+    try {
+      const fileSizeMB = videoFile.size / 1024 / 1024;
+
+      if (fileSizeMB > 50) {
+        setError(`Video file is ${fileSizeMB.toFixed(2)}MB. Maximum file size is 50MB.`);
+        setIsLoading(false);
+        setProgress('');
+        setStep('upload');
+        return;
+      }
+
+      // Upload to Vercel Blob
+      const { upload } = await import('@vercel/blob/client');
+      const timestamp = Date.now();
+      const randomStr = Math.random().toString(36).substring(2, 8);
+      const fileExt = videoFile.name.split('.').pop();
+      const baseName = videoFile.name.replace(`.${fileExt}`, '');
+      const uniqueFileName = `${baseName}-${timestamp}-${randomStr}.${fileExt}`;
+
+      setProgress(`Uploading ${fileSizeMB.toFixed(1)}MB video...`);
+      const blob = await upload(uniqueFileName, videoFile, {
+        access: 'public',
+        handleUploadUrl: '/api/upload',
+      });
+
+      console.log('Video uploaded to blob:', blob.url);
+      setVideoUrl(blob.url);
+
+      // Create dubbing job with Dubbing Studio mode
+      setProgress('🎬 Creating dubbing job with ElevenLabs Dubbing Studio...');
+
+      const createResponse = await fetch('/api/dubbing/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoUrl: blob.url,
+          targetLanguage: targetLanguage,
+          sourceLanguage: undefined, // Let ElevenLabs auto-detect
+          disableVoiceCloning: disableVoiceCloning,
+          dropBackgroundAudio: dropBackgroundAudio,
+        }),
+      });
+
+      if (!createResponse.ok) {
+        const errorData = await createResponse.json();
+        throw new Error(errorData.error || 'Failed to create dubbing job');
+      }
+
+      const createData = await createResponse.json();
+      const dubbingId = createData.dubbingId;
+      const detectedSource = createData.sourceLanguage || 'en';
+
+      console.log('Dubbing job created:', dubbingId);
+      console.log('Detected source language:', detectedSource);
+
+      setCurrentDubbingId(dubbingId);
+      setDetectedLanguage(detectedSource);
+
+      // Wait for dubbing to complete
+      setProgress('⏳ Processing transcription and translation (2-5 minutes)...');
+      await pollForDubbingCompletion(dubbingId, detectedSource);
+
+    } catch (err) {
+      console.error('Dubbing workflow error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Dubbing failed';
+      setError(`Dubbing failed: ${errorMessage}`);
+      setStep('upload');
+      setIsLoading(false);
+      setProgress('');
+    }
+  };
+
+  const pollForDubbingCompletion = async (dubbingId: string, sourceLanguageCode: string) => {
+    const maxPolls = 120; // 10 minutes max (120 * 5 seconds)
+    let polls = 0;
+
+    while (polls < maxPolls) {
+      try {
+        // Use the correct status endpoint for dubbing studio
+        const statusResponse = await fetch(`/api/dubbing/status?dubbingId=${dubbingId}`);
+
+        if (!statusResponse.ok) {
+          throw new Error('Failed to check dubbing status');
+        }
+
+        const statusData = await statusResponse.json();
+
+        console.log(`[Poll ${polls}] Status: ${statusData.status}`);
+
+        // Show detailed progress
+        const minutes = Math.floor(polls * 5 / 60);
+        const seconds = (polls * 5) % 60;
+        setProgress(`⏳ Processing transcription and translation (${minutes}m ${seconds}s elapsed)...`);
+
+        if (statusData.status === 'dubbed' && statusData.ready) {
+          console.log('✓ Dubbing complete! Fetching transcripts...');
+
+          // Use detected source language from status if available
+          const actualSourceLang = statusData.sourceLanguage || sourceLanguageCode;
+
+          // Fetch both source and target transcripts
+          await fetchTranscripts(dubbingId, actualSourceLang, targetLanguage);
+          return;
+        }
+
+        if (statusData.status === 'failed') {
+          throw new Error('Dubbing job failed');
+        }
+
+        // Wait 5 seconds before next poll
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        polls++;
+      } catch (error) {
+        console.error('Polling error:', error);
+        throw error;
+      }
+    }
+
+    throw new Error('Dubbing timed out after 10 minutes');
+  };
+
+  const fetchTranscripts = async (dubbingId: string, sourceLanguageCode: string, targetLanguageCode: string) => {
+    try {
+      setProgress('📄 Fetching transcripts...');
+      console.log(`Fetching transcripts for dubbing ${dubbingId}`);
+      console.log(`Source language: ${sourceLanguageCode}, Target language: ${targetLanguageCode}`);
+
+      // Fetch source transcript
+      console.log('Fetching source transcript...');
+      const sourceResponse = await fetch('/api/dubbing/transcript', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dubbingId: dubbingId,
+          languageCode: sourceLanguageCode,
+          format: 'srt',
+        }),
+      });
+
+      if (!sourceResponse.ok) {
+        const errorData = await sourceResponse.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('Source transcript fetch failed:', errorData);
+        throw new Error(`Failed to fetch source transcript: ${errorData.error || sourceResponse.statusText}`);
+      }
+
+      const sourceData = await sourceResponse.json();
+      console.log('Source transcript received, length:', sourceData.transcript?.length || 0);
+      setSourceTranscript(sourceData.transcript);
+      setEditableTranscript(sourceData.transcript);
+      setOriginalText(sourceData.transcript);
+
+      // Fetch target transcript
+      console.log('Fetching target transcript...');
+      const targetResponse = await fetch('/api/dubbing/transcript', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dubbingId: dubbingId,
+          languageCode: targetLanguageCode,
+          format: 'srt',
+        }),
+      });
+
+      if (!targetResponse.ok) {
+        const errorData = await targetResponse.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('Target transcript fetch failed:', errorData);
+        throw new Error(`Failed to fetch target transcript: ${errorData.error || targetResponse.statusText}`);
+      }
+
+      const targetData = await targetResponse.json();
+      console.log('Target transcript received, length:', targetData.transcript?.length || 0);
+      setTargetTranscript(targetData.transcript);
+      setTranslatedText(targetData.transcript);
+
+      console.log('✓ Transcripts fetched successfully');
+      setIsLoading(false);
+      setProgress('');
+      setStep('edit-english'); // Show transcript editing screen
+
+    } catch (error) {
+      console.error('Failed to fetch transcripts:', error);
+      console.error('Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      throw error;
+    }
+  };
+
   const translateScript = async () => {
+    // Check if source and target languages are the same
+    if (detectedLanguage === targetLanguage) {
+      setError(`Cannot translate ${detectedLanguage.toUpperCase()} to ${languages.find(l => l.code === targetLanguage)?.name}. Please select a different target language.`);
+      return;
+    }
+
     setIsLoading(true);
     setError('');
     setProgress('Translating script to ' + languages.find(l => l.code === targetLanguage)?.name + '...');
@@ -315,39 +582,43 @@ export default function Home() {
   };
 
   const completeDubbing = async () => {
+    // The dubbing is already complete - we just need to download the final video
     setIsLoading(true);
     setError('');
-    setProgress('Generating dubbed video...');
+    setProgress('Downloading dubbed video...');
     setStep('processing');
 
     try {
-      console.log('Starting ElevenLabs Dubbing Studio...');
+      console.log('Downloading dubbed video...');
+      setProgress('📥 Combining original video with dubbed audio...');
 
-      // Use ElevenLabs Dubbing Studio for professional voice cloning and timing
-      setProgress('🎬 Dubbing video with ElevenLabs Enterprise (voice cloning + perfect timing)...');
+      // Download dubbed video
+      const videoUrl_current = videoUrl; // Use the stored video URL
       const response = await fetch('/api/translate-and-dub', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          videoUrl: videoUrl,
+          videoUrl: videoUrl_current,
           targetLanguage: targetLanguage,
           sourceLanguage: detectedLanguage,
+          disableVoiceCloning: disableVoiceCloning,
+          dropBackgroundAudio: dropBackgroundAudio,
+          audioOnly: false,
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Translation and dubbing failed');
+        throw new Error(errorData.error || 'Failed to download dubbed video');
       }
 
       const data = await response.json();
 
-      console.log('Dubbing complete!');
-      console.log('Processing time:', data.processingTime, 'seconds');
+      console.log('Video downloaded!');
 
       // Verify videoData exists in response
       if (!data.videoData) {
-        throw new Error('API did not return video data. Check server logs for FFmpeg errors.');
+        throw new Error('API did not return video data. Check server logs.');
       }
 
       console.log('Video data received, size:', data.videoData.length, 'characters (base64)');
@@ -362,8 +633,8 @@ export default function Home() {
       setStep('complete');
 
     } catch (err) {
-      console.error('Dubbing error:', err);
-      setError(err instanceof Error ? err.message : 'Dubbing failed');
+      console.error('Download error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to download video');
       setStep('edit-translation');
     } finally {
       setIsLoading(false);
@@ -531,7 +802,7 @@ export default function Home() {
               <span className="text-2xl">🎬</span>
             </div>
             <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              VoicePort
+              ScriptShift
             </h1>
           </div>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
@@ -662,7 +933,7 @@ export default function Home() {
               <label className="block text-lg font-semibold text-gray-900 mb-3">
                 Select Target Language
               </label>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {languages.map((lang) => (
                   <button
                     key={lang.code}
@@ -674,6 +945,7 @@ export default function Home() {
                     }`}
                   >
                     <div className="text-2xl mb-2">
+                      {lang.code === 'en' && '🇬🇧'}
                       {lang.code === 'es' && '🇪🇸'}
                       {lang.code === 'fr' && '🇫🇷'}
                       {lang.code === 'it' && '🇮🇹'}
@@ -684,6 +956,64 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Voice Control Options */}
+            <div className="mt-8 bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-200 rounded-2xl p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <span>🎤</span>
+                Voice Control Options
+              </h3>
+
+              <div className="space-y-4">
+                {/* Disable Voice Cloning */}
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <div className="flex items-center h-6">
+                    <input
+                      type="checkbox"
+                      checked={disableVoiceCloning}
+                      onChange={(e) => setDisableVoiceCloning(e.target.checked)}
+                      className="w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-gray-900 group-hover:text-purple-700 transition">
+                      Disable Voice Cloning
+                    </div>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Use pre-designed synthetic voices from ElevenLabs Voice Library instead of cloning the original voices
+                    </p>
+                  </div>
+                </label>
+
+                {/* Drop Background Audio */}
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <div className="flex items-center h-6">
+                    <input
+                      type="checkbox"
+                      checked={dropBackgroundAudio}
+                      onChange={(e) => setDropBackgroundAudio(e.target.checked)}
+                      className="w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-gray-900 group-hover:text-purple-700 transition">
+                      Remove Background Audio
+                    </div>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Strip background music and sound effects (recommended for speeches/monologues)
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              {disableVoiceCloning && (
+                <div className="mt-4 bg-white border border-purple-300 rounded-xl p-4">
+                  <p className="text-sm text-purple-800 font-medium">
+                    ✓ Voice cloning is disabled. ElevenLabs will automatically select similar voices from their Voice Library.
+                  </p>
+                </div>
+              )}
+            </div>
+
             {/* Info Box */}
             <div className="mt-8 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-2xl p-5">
               <div className="flex items-start gap-4">
@@ -691,13 +1021,23 @@ export default function Home() {
                   <span className="text-xl">✨</span>
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900 mb-2">What happens next?</h3>
+                  <h3 className="font-semibold text-gray-900 mb-2">Dubbing Studio Workflow:</h3>
                   <ul className="text-sm text-gray-700 space-y-1">
-                    <li>• AI transcribes your video with speaker detection</li>
-                    <li>• You review and edit the English transcript</li>
-                    <li>• AI translates to your chosen language</li>
-                    <li>• Professional voice cloning for all speakers</li>
-                    <li>• Download your dubbed video (takes 2-5 minutes)</li>
+                    <li>• <strong>Step 1:</strong> AI transcribes original audio and detects speakers</li>
+                    <li>• <strong>Step 2:</strong> AI translates to {languages.find(l => l.code === targetLanguage)?.name}</li>
+                    <li>• <strong>Step 3:</strong> Review and edit transcripts (just like ElevenLabs UI)</li>
+                    <li>• <strong>Step 4:</strong> Generate final dubbed video</li>
+                    {disableVoiceCloning ? (
+                      <li>• Voice: Using Voice Library synthetic voices</li>
+                    ) : (
+                      <li>• Voice: Professional cloning for each speaker</li>
+                    )}
+                    {dropBackgroundAudio ? (
+                      <li>• Audio: Background removed</li>
+                    ) : (
+                      <li>• Audio: Background music preserved</li>
+                    )}
+                    <li>• <strong>Total time:</strong> 2-5 minutes processing + editing time</li>
                   </ul>
                 </div>
               </div>
@@ -706,18 +1046,18 @@ export default function Home() {
             {/* Start Button */}
             <div className="mt-8">
               <button
-                onClick={fastDubVideo}
+                onClick={directDubbing}
                 disabled={!videoFile || isLoading}
-                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-5 px-8 rounded-2xl text-lg font-bold hover:shadow-xl hover:scale-[1.02] disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all duration-200"
+                className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white py-5 px-8 rounded-2xl text-lg font-bold hover:shadow-xl hover:scale-[1.02] disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all duration-200"
               >
                 {isLoading ? (
                   <span className="flex items-center justify-center gap-3">
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                    Transcribing Audio...
+                    Processing...
                   </span>
                 ) : (
                   <span className="flex items-center justify-center gap-2">
-                    <span>Start Translation</span>
+                    <span>🎬 Start Dubbing</span>
                     <span>→</span>
                   </span>
                 )}
@@ -731,16 +1071,30 @@ export default function Home() {
           <div className="bg-white rounded-lg shadow-lg p-8">
             <h2 className="text-2xl font-semibold mb-4">📝 Edit English Script</h2>
 
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-              <p className="text-sm text-blue-800">
+            <div className={`border rounded-lg p-4 mb-6 ${
+              detectedLanguage === targetLanguage
+                ? 'bg-yellow-50 border-yellow-300'
+                : 'bg-blue-50 border-blue-200'
+            }`}>
+              <p className={`text-sm font-semibold mb-2 ${
+                detectedLanguage === targetLanguage ? 'text-yellow-900' : 'text-blue-800'
+              }`}>
                 <strong>Detected Language:</strong> {detectedLanguage.toUpperCase()} → <strong>Target:</strong> {languages.find(l => l.code === targetLanguage)?.name}
               </p>
-              <p className="text-xs text-blue-600 mt-2">
-                ✏️ Review the video script below. The AI has identified speakers and added inferred on-screen text based on the dialogue.
-              </p>
-              <p className="text-xs text-blue-700 mt-1 font-medium">
-                📝 Add any missing [SUPER: "text"] or [LOCKUP: Brand] elements that appear in your video!
-              </p>
+              {detectedLanguage === targetLanguage ? (
+                <p className="text-sm text-yellow-800">
+                  ⚠️ <strong>Warning:</strong> Source and target languages are the same! Please select a different target language below.
+                </p>
+              ) : (
+                <>
+                  <p className="text-xs text-blue-600 mt-2">
+                    ✏️ Review the video script below. The AI has identified speakers and added inferred on-screen text based on the dialogue.
+                  </p>
+                  <p className="text-xs text-blue-700 mt-1 font-medium">
+                    📝 Add any missing [SUPER: "text"] or [LOCKUP: Brand] elements that appear in your video!
+                  </p>
+                </>
+              )}
             </div>
 
             <div className="mb-6">
@@ -781,6 +1135,42 @@ export default function Home() {
               </ul>
             </div>
 
+            {/* Target Language Selector */}
+            {detectedLanguage && (
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Target Language (Change if needed)
+                </label>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {languages.map((lang) => (
+                    <button
+                      key={lang.code}
+                      onClick={() => setTargetLanguage(lang.code)}
+                      disabled={lang.code === detectedLanguage}
+                      className={`p-3 rounded-lg border-2 font-medium text-sm transition-all duration-200 ${
+                        targetLanguage === lang.code
+                          ? 'border-purple-500 bg-purple-50 text-purple-700'
+                          : lang.code === detectedLanguage
+                          ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+                          : 'border-gray-200 bg-white text-gray-700 hover:border-purple-300 hover:bg-purple-50'
+                      }`}
+                    >
+                      <div className="text-lg mb-1">
+                        {lang.code === 'en' && '🇬🇧'}
+                        {lang.code === 'es' && '🇪🇸'}
+                        {lang.code === 'fr' && '🇫🇷'}
+                        {lang.code === 'it' && '🇮🇹'}
+                      </div>
+                      {lang.name}
+                      {lang.code === detectedLanguage && (
+                        <div className="text-xs text-gray-500 mt-1">(Source)</div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="flex gap-4">
               <button
                 onClick={() => setStep('upload')}
@@ -790,7 +1180,7 @@ export default function Home() {
               </button>
               <button
                 onClick={translateScript}
-                disabled={isLoading || !editableTranscript.trim()}
+                disabled={isLoading || !editableTranscript.trim() || detectedLanguage === targetLanguage}
                 className="flex-2 bg-blue-600 text-white py-3 px-8 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition"
               >
                 {isLoading ? 'Translating...' : '🌍 Translate to ' + languages.find(l => l.code === targetLanguage)?.name}
@@ -799,64 +1189,99 @@ export default function Home() {
           </div>
         )}
 
-        {/* Step 3: Edit Translation (Side-by-Side) */}
+        {/* Step 3: Edit Translation (Side-by-Side like ElevenLabs UI) */}
         {step === 'edit-translation' && (
-          <div className="bg-white rounded-lg shadow-lg p-8">
-            <h2 className="text-2xl font-semibold mb-4">🌍 Review Translation</h2>
+          <div className="bg-white rounded-3xl shadow-xl p-10 border border-gray-100">
+            <h2 className="text-3xl font-bold text-gray-900 mb-3">📝 Review Transcripts & Translation</h2>
 
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-              <p className="text-sm text-green-800">
+            <div className="bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-200 rounded-2xl p-5 mb-8">
+              <p className="text-sm text-green-900 font-semibold">
                 <strong>Translation:</strong> {detectedLanguage.toUpperCase()} → {languages.find(l => l.code === targetLanguage)?.name}
               </p>
-              <p className="text-xs text-green-600 mt-2">
-                ✏️ Review both the English and translated scripts. You can edit both sides to fix any errors!
+              <p className="text-xs text-green-700 mt-2">
+                ✏️ <strong>Just like ElevenLabs Dubbing Studio:</strong> Review both transcripts side-by-side. Edit any text before generating the final video!
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="grid grid-cols-2 gap-6 mb-8">
+              {/* Original Transcript */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  English Script
-                  <span className="text-gray-500 font-normal ml-2">({editableTranscript.length} chars)</span>
-                </label>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-2xl">🎤</span>
+                  <label className="text-lg font-bold text-gray-900">
+                    Original ({detectedLanguage.toUpperCase()})
+                  </label>
+                  <span className="text-sm text-gray-500 ml-auto">
+                    {sourceTranscript.length} chars
+                  </span>
+                </div>
                 <textarea
-                  value={editableTranscript}
-                  onChange={(e) => setEditableTranscript(e.target.value)}
-                  rows={16}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm leading-relaxed bg-gray-50"
-                  placeholder="Edit English script..."
-                  style={{ lineHeight: '1.6' }}
+                  value={sourceTranscript}
+                  onChange={(e) => setSourceTranscript(e.target.value)}
+                  rows={20}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm leading-relaxed bg-gray-50 resize-none"
+                  placeholder="Original transcript..."
+                  style={{ lineHeight: '1.8' }}
                 />
+                <p className="text-xs text-gray-500 mt-2">
+                  Source language transcript with speaker labels
+                </p>
               </div>
+
+              {/* Translation */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  {languages.find(l => l.code === targetLanguage)?.name} Translation
-                  <span className="text-gray-500 font-normal ml-2">({translatedText.length} chars)</span>
-                </label>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-2xl">🌍</span>
+                  <label className="text-lg font-bold text-gray-900">
+                    Translation ({languages.find(l => l.code === targetLanguage)?.name})
+                  </label>
+                  <span className="text-sm text-gray-500 ml-auto">
+                    {targetTranscript.length} chars
+                  </span>
+                </div>
                 <textarea
-                  value={translatedText}
-                  onChange={(e) => setTranslatedText(e.target.value)}
-                  rows={16}
-                  className="w-full px-4 py-3 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent font-mono text-sm leading-relaxed bg-green-50"
-                  placeholder="Edit translation..."
-                  style={{ lineHeight: '1.6' }}
+                  value={targetTranscript}
+                  onChange={(e) => setTargetTranscript(e.target.value)}
+                  rows={20}
+                  className="w-full px-4 py-3 border-2 border-green-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 font-mono text-sm leading-relaxed bg-green-50 resize-none"
+                  placeholder="Translated transcript..."
+                  style={{ lineHeight: '1.8' }}
                 />
+                <p className="text-xs text-gray-500 mt-2">
+                  Translated transcript - edit freely to fix any mistakes
+                </p>
               </div>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+              <p className="text-sm text-blue-800">
+                <strong>💡 Tip:</strong> The transcripts are in SRT format with timestamps. You can edit the text while keeping the timing structure. ElevenLabs will generate dubbed audio matching your edited text.
+              </p>
             </div>
 
             <div className="flex gap-4">
               <button
-                onClick={() => setStep('edit-english')}
-                className="flex-1 bg-gray-200 text-gray-700 py-3 px-6 rounded-lg font-semibold hover:bg-gray-300 transition"
+                onClick={() => setStep('upload')}
+                className="flex-1 bg-gray-200 text-gray-700 py-4 px-8 rounded-2xl font-bold hover:bg-gray-300 transition shadow-sm"
               >
-                ← Back to English
+                ← Start Over
               </button>
               <button
                 onClick={completeDubbing}
-                disabled={isLoading || !translatedText.trim()}
-                className="flex-2 bg-purple-600 text-white py-3 px-8 rounded-lg font-semibold hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition"
+                disabled={isLoading || !targetTranscript.trim()}
+                className="flex-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white py-4 px-12 rounded-2xl font-bold hover:shadow-xl hover:scale-[1.02] disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all duration-200"
               >
-                {isLoading ? 'Dubbing...' : '🎬 Generate Dubbed Video'}
+                {isLoading ? (
+                  <span className="flex items-center justify-center gap-3">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    Generating Video...
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center gap-2">
+                    <span>🎬 Generate Final Video</span>
+                    <span>→</span>
+                  </span>
+                )}
               </button>
             </div>
           </div>
@@ -914,13 +1339,32 @@ export default function Home() {
                   <video controls className="w-full rounded mb-4">
                     <source src={URL.createObjectURL(generatedVideo)} type="video/mp4" />
                   </video>
-                  <a
-                    href={URL.createObjectURL(generatedVideo)}
-                    download={`dubbed-video-${targetLanguage}.mp4`}
-                    className="inline-block bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 transition"
-                  >
-                    Download Dubbed Video
-                  </a>
+                  <div className="flex gap-3">
+                    <a
+                      href={URL.createObjectURL(generatedVideo)}
+                      download={`dubbed-video-${targetLanguage}.mp4`}
+                      className="flex-1 text-center bg-green-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-green-700 transition shadow-sm"
+                    >
+                      📥 Download Video
+                    </a>
+                    <button
+                      onClick={downloadAudioOnly}
+                      disabled={isLoading}
+                      className="flex-1 bg-purple-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition shadow-sm"
+                    >
+                      {isLoading ? (
+                        <span className="flex items-center justify-center gap-2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          Downloading...
+                        </span>
+                      ) : (
+                        '🎵 Download Audio Only'
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-600 mt-3 text-center">
+                    Download audio separately for custom mixing in your video editor
+                  </p>
                 </div>
               )}
             </div>
