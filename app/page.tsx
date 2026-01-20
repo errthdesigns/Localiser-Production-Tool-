@@ -398,9 +398,15 @@ export default function Home() {
 
       const createData = await createResponse.json();
       const dubbingId = createData.dubbingId;
-      const detectedSource = createData.sourceLanguage || 'auto';
+      const detectedSource = createData.sourceLanguage || 'en'; // Default to 'en' if not detected
 
       console.log('Dubbing job created:', dubbingId);
+      console.log('Detected source language:', detectedSource);
+
+      if (detectedSource === 'auto') {
+        console.warn('Source language is "auto", defaulting to "en"');
+      }
+
       setCurrentDubbingId(dubbingId);
       setDetectedLanguage(detectedSource);
 
