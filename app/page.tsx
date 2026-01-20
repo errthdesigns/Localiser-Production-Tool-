@@ -277,6 +277,92 @@ export default function Home() {
     }
   };
 
+  const directDubbing = async () => {
+    if (!videoFile) return;
+
+    setIsLoading(true);
+    setError('');
+    setProgress('Uploading video...');
+    setStep('processing');
+
+    try {
+      const fileSizeMB = videoFile.size / 1024 / 1024;
+
+      if (fileSizeMB > 50) {
+        setError(`Video file is ${fileSizeMB.toFixed(2)}MB. Maximum file size is 50MB.`);
+        setIsLoading(false);
+        setProgress('');
+        setStep('upload');
+        return;
+      }
+
+      // Upload to Vercel Blob
+      const { upload } = await import('@vercel/blob/client');
+      const timestamp = Date.now();
+      const randomStr = Math.random().toString(36).substring(2, 8);
+      const fileExt = videoFile.name.split('.').pop();
+      const baseName = videoFile.name.replace(`.${fileExt}`, '');
+      const uniqueFileName = `${baseName}-${timestamp}-${randomStr}.${fileExt}`;
+
+      setProgress(`Uploading ${fileSizeMB.toFixed(1)}MB video...`);
+      const blob = await upload(uniqueFileName, videoFile, {
+        access: 'public',
+        handleUploadUrl: '/api/upload',
+      });
+
+      console.log('Video uploaded to blob:', blob.url);
+      setVideoUrl(blob.url);
+
+      // Submit directly to ElevenLabs Dubbing Studio (no transcript review)
+      setProgress('🎬 Submitting to ElevenLabs Dubbing Studio...');
+      setProgress('⏳ Processing with professional AI (this takes 2-5 minutes)...');
+
+      const response = await fetch('/api/translate-and-dub', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoUrl: blob.url,
+          targetLanguage: targetLanguage,
+          sourceLanguage: undefined, // Let ElevenLabs auto-detect
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Dubbing failed');
+      }
+
+      const data = await response.json();
+
+      console.log('Dubbing complete!');
+      console.log('Processing time:', data.processingTime, 'seconds');
+
+      // Verify videoData exists in response
+      if (!data.videoData) {
+        throw new Error('API did not return video data. Check server logs.');
+      }
+
+      console.log('Video data received, size:', data.videoData.length, 'characters (base64)');
+
+      // Convert base64 video to blob
+      const videoBytes = Uint8Array.from(atob(data.videoData), c => c.charCodeAt(0));
+      const videoBlob = new Blob([videoBytes], { type: 'video/mp4' });
+
+      console.log('Video blob created, size:', videoBlob.size, 'bytes');
+
+      setGeneratedVideo(videoBlob);
+      setStep('complete');
+
+    } catch (err) {
+      console.error('Direct dubbing error:', err);
+      setError(err instanceof Error ? err.message : 'Dubbing failed');
+      setStep('upload');
+    } finally {
+      setIsLoading(false);
+      setProgress('');
+    }
+  };
+
   const translateScript = async () => {
     // Check if source and target languages are the same
     if (detectedLanguage === targetLanguage) {
@@ -706,34 +792,51 @@ export default function Home() {
                   <span className="text-xl">✨</span>
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900 mb-2">What happens next?</h3>
-                  <ul className="text-sm text-gray-700 space-y-1">
-                    <li>• AI transcribes your video with speaker detection</li>
-                    <li>• You review and edit the English transcript</li>
-                    <li>• AI translates to your chosen language</li>
-                    <li>• Professional voice cloning for all speakers</li>
-                    <li>• Download your dubbed video (takes 2-5 minutes)</li>
-                  </ul>
+                  <h3 className="font-semibold text-gray-900 mb-2">Choose Your Workflow</h3>
+                  <p className="text-sm text-gray-700 mb-3">
+                    <strong>Quick Dubbing:</strong> Skip transcript review and let ElevenLabs handle everything automatically (faster, recommended)
+                  </p>
+                  <p className="text-sm text-gray-700">
+                    <strong>Review Workflow:</strong> Review and edit transcript before dubbing (slower, may have transcription issues)
+                  </p>
                 </div>
               </div>
             </div>
 
-            {/* Start Button */}
-            <div className="mt-8">
+            {/* Start Buttons */}
+            <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
               <button
-                onClick={fastDubVideo}
+                onClick={directDubbing}
                 disabled={!videoFile || isLoading}
-                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-5 px-8 rounded-2xl text-lg font-bold hover:shadow-xl hover:scale-[1.02] disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all duration-200"
+                className="bg-gradient-to-r from-green-600 to-emerald-600 text-white py-5 px-8 rounded-2xl text-lg font-bold hover:shadow-xl hover:scale-[1.02] disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all duration-200"
               >
                 {isLoading ? (
                   <span className="flex items-center justify-center gap-3">
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                    Transcribing Audio...
+                    Processing...
                   </span>
                 ) : (
-                  <span className="flex items-center justify-center gap-2">
-                    <span>Start Translation</span>
-                    <span>→</span>
+                  <span className="flex flex-col items-center gap-1">
+                    <span>⚡ Quick Dubbing</span>
+                    <span className="text-xs font-normal opacity-90">Recommended</span>
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={fastDubVideo}
+                disabled={!videoFile || isLoading}
+                className="bg-gradient-to-r from-blue-600 to-purple-600 text-white py-5 px-8 rounded-2xl text-lg font-bold hover:shadow-xl hover:scale-[1.02] disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all duration-200"
+              >
+                {isLoading ? (
+                  <span className="flex items-center justify-center gap-3">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    Transcribing...
+                  </span>
+                ) : (
+                  <span className="flex flex-col items-center gap-1">
+                    <span>📝 Review Workflow</span>
+                    <span className="text-xs font-normal opacity-90">Edit transcript first</span>
                   </span>
                 )}
               </button>
