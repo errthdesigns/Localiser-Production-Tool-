@@ -88,6 +88,7 @@ export async function POST(request: NextRequest) {
         disableVoiceCloning: disableVoiceCloning || false,
         dropBackgroundAudio: dropBackgroundAudio || false,
         highestResolution: true,
+        dubbingStudio: false, // Keep it simple - don't enable studio mode
       }
     );
 

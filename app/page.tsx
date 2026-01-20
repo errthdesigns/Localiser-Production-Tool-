@@ -376,10 +376,11 @@ export default function Home() {
       console.log('Video uploaded to blob:', blob.url);
       setVideoUrl(blob.url);
 
-      // Create dubbing job with Dubbing Studio mode
-      setProgress('🎬 Creating dubbing job with ElevenLabs Dubbing Studio...');
+      // Submit to ElevenLabs Dubbing - simple and direct
+      setProgress('🎬 Submitting to ElevenLabs Dubbing Studio...');
+      setProgress('⏳ Processing with professional AI (this takes 2-5 minutes)...');
 
-      const createResponse = await fetch('/api/dubbing/create', {
+      const response = await fetch('/api/translate-and-dub', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -388,42 +389,40 @@ export default function Home() {
           sourceLanguage: undefined, // Let ElevenLabs auto-detect
           disableVoiceCloning: disableVoiceCloning,
           dropBackgroundAudio: dropBackgroundAudio,
+          audioOnly: false,
         }),
       });
 
-      if (!createResponse.ok) {
-        const errorData = await createResponse.json();
-        throw new Error(errorData.error || 'Failed to create dubbing job');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Dubbing failed');
       }
 
-      const createData = await createResponse.json();
-      const dubbingId = createData.dubbingId;
-      const detectedSource = createData.sourceLanguage || 'en'; // Default to 'en' if not detected
+      const data = await response.json();
 
-      console.log('Dubbing job created:', dubbingId);
-      console.log('Detected source language:', detectedSource);
+      console.log('Dubbing complete!');
+      console.log('Processing time:', data.processingTime, 'seconds');
 
-      if (detectedSource === 'auto') {
-        console.warn('Source language is "auto", defaulting to "en"');
+      if (!data.videoData) {
+        throw new Error('API did not return video data. Check server logs.');
       }
 
-      setCurrentDubbingId(dubbingId);
-      setDetectedLanguage(detectedSource);
+      console.log('Video data received, size:', data.videoData.length, 'characters (base64)');
 
-      // Wait for dubbing to complete
-      setProgress('⏳ Processing transcription and translation (2-5 minutes)...');
-      await pollForDubbingCompletion(dubbingId, detectedSource);
+      // Convert base64 video to blob
+      const videoBytes = Uint8Array.from(atob(data.videoData), c => c.charCodeAt(0));
+      const videoBlob = new Blob([videoBytes], { type: 'video/mp4' });
+
+      console.log('Video blob created, size:', videoBlob.size, 'bytes');
+
+      setGeneratedVideo(videoBlob);
+      setStep('complete');
 
     } catch (err) {
-      console.error('Dubbing workflow error:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Dubbing failed';
-      console.error('Full error details:', {
-        message: errorMessage,
-        error: err,
-        stack: err instanceof Error ? err.stack : undefined,
-      });
-      setError(`Dubbing failed: ${errorMessage}`);
+      console.error('Direct dubbing error:', err);
+      setError(err instanceof Error ? err.message : 'Dubbing failed');
       setStep('upload');
+    } finally {
       setIsLoading(false);
       setProgress('');
     }
@@ -1030,23 +1029,23 @@ export default function Home() {
                   <span className="text-xl">✨</span>
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900 mb-2">Dubbing Studio Workflow:</h3>
+                  <h3 className="font-semibold text-gray-900 mb-2">What happens next?</h3>
                   <ul className="text-sm text-gray-700 space-y-1">
-                    <li>• <strong>Step 1:</strong> AI transcribes and detects all speakers</li>
-                    <li>• <strong>Step 2:</strong> Review and edit the original transcript</li>
-                    <li>• <strong>Step 3:</strong> AI translates to {languages.find(l => l.code === targetLanguage)?.name}</li>
-                    <li>• <strong>Step 4:</strong> Review and edit the translation</li>
+                    <li>• ElevenLabs automatically detects all speakers in your video</li>
+                    <li>• AI transcribes the original audio</li>
+                    <li>• AI translates to {languages.find(l => l.code === targetLanguage)?.name}</li>
                     {disableVoiceCloning ? (
-                      <li>• <strong>Step 5:</strong> Generate with Voice Library voices</li>
+                      <li>• Uses high-quality synthetic voices from Voice Library</li>
                     ) : (
-                      <li>• <strong>Step 6:</strong> Generate with voice cloning</li>
+                      <li>• Professional voice cloning for each speaker</li>
                     )}
                     {dropBackgroundAudio ? (
-                      <li>• Background audio removed</li>
+                      <li>• Removes background audio and music</li>
                     ) : (
-                      <li>• Background music preserved</li>
+                      <li>• Preserves background music and sound effects</li>
                     )}
-                    <li>• <strong>Total time:</strong> 2-5 minutes</li>
+                    <li>• Perfect timing synchronization</li>
+                    <li>• Download your dubbed video (takes 2-5 minutes)</li>
                   </ul>
                 </div>
               </div>
