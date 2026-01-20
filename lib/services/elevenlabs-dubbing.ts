@@ -49,6 +49,7 @@ export class ElevenLabsDubbingService {
       disableVoiceCloning?: boolean;
       dropBackgroundAudio?: boolean;
       highestResolution?: boolean;
+      dubbingStudio?: boolean;
     }
   ): Promise<DubbingJob> {
     try {
@@ -57,6 +58,7 @@ export class ElevenLabsDubbingService {
         disableVoiceCloning: options?.disableVoiceCloning || false,
         dropBackgroundAudio: options?.dropBackgroundAudio || false,
         highestResolution: options?.highestResolution || false,
+        dubbingStudio: options?.dubbingStudio || false,
       });
 
       const formData = new FormData();
@@ -83,6 +85,12 @@ export class ElevenLabsDubbingService {
         console.log('✓ Background audio will be removed');
       } else {
         console.log('✓ Background audio/music will be preserved');
+      }
+
+      // Dubbing Studio mode - enables transcript/translation editing
+      if (options?.dubbingStudio) {
+        formData.append('dubbing_studio', 'true');
+        console.log('✓ Dubbing Studio mode enabled - transcript/translation editing available');
       }
 
       // Quality settings
@@ -198,6 +206,69 @@ export class ElevenLabsDubbingService {
   }
 
   /**
+   * Get transcript for a dubbing job in JSON format
+   * Uses new endpoint: GET /v1/dubbing/{dubbing_id}/transcripts/{language_code}/format/json
+   */
+  async getTranscript(dubbingId: string, languageCode: string): Promise<any> {
+    try {
+      console.log(`Fetching transcript for dubbing ${dubbingId}, language: ${languageCode}...`);
+
+      const response = await fetch(
+        `${this.baseUrl}/dubbing/${dubbingId}/transcripts/${languageCode}/format/json`,
+        {
+          method: 'GET',
+          headers: {
+            'xi-api-key': this.apiKey,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch transcript: ${response.statusText}`);
+      }
+
+      const transcript = await response.json();
+      console.log(`✓ Transcript fetched successfully`);
+
+      return transcript;
+    } catch (error) {
+      console.error('Failed to get transcript:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get transcript in SRT format (for display/editing)
+   */
+  async getTranscriptSRT(dubbingId: string, languageCode: string): Promise<string> {
+    try {
+      console.log(`Fetching SRT transcript for dubbing ${dubbingId}, language: ${languageCode}...`);
+
+      const response = await fetch(
+        `${this.baseUrl}/dubbing/${dubbingId}/transcripts/${languageCode}/format/srt`,
+        {
+          method: 'GET',
+          headers: {
+            'xi-api-key': this.apiKey,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch SRT transcript: ${response.statusText}`);
+      }
+
+      const srtText = await response.text();
+      console.log(`✓ SRT transcript fetched successfully`);
+
+      return srtText;
+    } catch (error) {
+      console.error('Failed to get SRT transcript:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Poll for dubbing completion
    * Checks status every 5 seconds until complete or failed
    */
@@ -237,6 +308,7 @@ export class ElevenLabsDubbingService {
       disableVoiceCloning?: boolean;
       dropBackgroundAudio?: boolean;
       highestResolution?: boolean;
+      dubbingStudio?: boolean;
     }
   ): Promise<{ dubbingId: string; videoBlob: Blob }> {
     try {
