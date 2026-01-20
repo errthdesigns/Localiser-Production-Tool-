@@ -278,6 +278,12 @@ export default function Home() {
   };
 
   const translateScript = async () => {
+    // Check if source and target languages are the same
+    if (detectedLanguage === targetLanguage) {
+      setError(`Cannot translate ${detectedLanguage.toUpperCase()} to ${languages.find(l => l.code === targetLanguage)?.name}. Please select a different target language.`);
+      return;
+    }
+
     setIsLoading(true);
     setError('');
     setProgress('Translating script to ' + languages.find(l => l.code === targetLanguage)?.name + '...');
@@ -316,6 +322,13 @@ export default function Home() {
   };
 
   const completeDubbing = async () => {
+    // Check if source and target languages are the same
+    if (detectedLanguage === targetLanguage) {
+      setError(`Cannot dub ${detectedLanguage.toUpperCase()} to ${languages.find(l => l.code === targetLanguage)?.name}. The video is already in ${languages.find(l => l.code === targetLanguage)?.name}!`);
+      setStep('edit-translation');
+      return;
+    }
+
     setIsLoading(true);
     setError('');
     setProgress('Generating dubbed video...');
@@ -733,16 +746,30 @@ export default function Home() {
           <div className="bg-white rounded-lg shadow-lg p-8">
             <h2 className="text-2xl font-semibold mb-4">📝 Edit English Script</h2>
 
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-              <p className="text-sm text-blue-800">
+            <div className={`border rounded-lg p-4 mb-6 ${
+              detectedLanguage === targetLanguage
+                ? 'bg-yellow-50 border-yellow-300'
+                : 'bg-blue-50 border-blue-200'
+            }`}>
+              <p className={`text-sm font-semibold mb-2 ${
+                detectedLanguage === targetLanguage ? 'text-yellow-900' : 'text-blue-800'
+              }`}>
                 <strong>Detected Language:</strong> {detectedLanguage.toUpperCase()} → <strong>Target:</strong> {languages.find(l => l.code === targetLanguage)?.name}
               </p>
-              <p className="text-xs text-blue-600 mt-2">
-                ✏️ Review the video script below. The AI has identified speakers and added inferred on-screen text based on the dialogue.
-              </p>
-              <p className="text-xs text-blue-700 mt-1 font-medium">
-                📝 Add any missing [SUPER: "text"] or [LOCKUP: Brand] elements that appear in your video!
-              </p>
+              {detectedLanguage === targetLanguage ? (
+                <p className="text-sm text-yellow-800">
+                  ⚠️ <strong>Warning:</strong> Source and target languages are the same! Please select a different target language below.
+                </p>
+              ) : (
+                <>
+                  <p className="text-xs text-blue-600 mt-2">
+                    ✏️ Review the video script below. The AI has identified speakers and added inferred on-screen text based on the dialogue.
+                  </p>
+                  <p className="text-xs text-blue-700 mt-1 font-medium">
+                    📝 Add any missing [SUPER: "text"] or [LOCKUP: Brand] elements that appear in your video!
+                  </p>
+                </>
+              )}
             </div>
 
             <div className="mb-6">
@@ -783,6 +810,42 @@ export default function Home() {
               </ul>
             </div>
 
+            {/* Target Language Selector */}
+            {detectedLanguage && (
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Target Language (Change if needed)
+                </label>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {languages.map((lang) => (
+                    <button
+                      key={lang.code}
+                      onClick={() => setTargetLanguage(lang.code)}
+                      disabled={lang.code === detectedLanguage}
+                      className={`p-3 rounded-lg border-2 font-medium text-sm transition-all duration-200 ${
+                        targetLanguage === lang.code
+                          ? 'border-purple-500 bg-purple-50 text-purple-700'
+                          : lang.code === detectedLanguage
+                          ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+                          : 'border-gray-200 bg-white text-gray-700 hover:border-purple-300 hover:bg-purple-50'
+                      }`}
+                    >
+                      <div className="text-lg mb-1">
+                        {lang.code === 'en' && '🇬🇧'}
+                        {lang.code === 'es' && '🇪🇸'}
+                        {lang.code === 'fr' && '🇫🇷'}
+                        {lang.code === 'it' && '🇮🇹'}
+                      </div>
+                      {lang.name}
+                      {lang.code === detectedLanguage && (
+                        <div className="text-xs text-gray-500 mt-1">(Source)</div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="flex gap-4">
               <button
                 onClick={() => setStep('upload')}
@@ -792,7 +855,7 @@ export default function Home() {
               </button>
               <button
                 onClick={translateScript}
-                disabled={isLoading || !editableTranscript.trim()}
+                disabled={isLoading || !editableTranscript.trim() || detectedLanguage === targetLanguage}
                 className="flex-2 bg-blue-600 text-white py-3 px-8 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition"
               >
                 {isLoading ? 'Translating...' : '🌍 Translate to ' + languages.find(l => l.code === targetLanguage)?.name}
