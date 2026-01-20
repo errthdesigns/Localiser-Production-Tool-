@@ -11,7 +11,7 @@ Professional video localization tool featuring:
 
 ## 🎯 Workflow
 
-1. **Upload Video** → Choose target language (Spanish, French, or Italian)
+1. **Upload Video** → Choose target language (English, Spanish, French, or Italian)
 2. **AI Transcription** → AssemblyAI transcribes with automatic speaker detection
 3. **Review English** → Edit the English transcript if needed
 4. **AI Translation** → GPT-4 translates to target language
@@ -105,7 +105,7 @@ Modern, professional design inspired by enterprise design systems:
 ## 🔮 Coming Soon
 
 - **HeyGen Integration** - AI lip-sync for perfect mouth movements
-- **More Languages** - Expand beyond Spanish, French, Italian
+- **More Languages** - Expand to support 20+ languages
 - **Batch Processing** - Process multiple videos at once
 - **Advanced Editing** - Fine-tune dubbing in the browser
 

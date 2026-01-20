@@ -43,6 +43,7 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const languages = [
+    { code: 'en', name: 'English' },
     { code: 'es', name: 'Spanish' },
     { code: 'fr', name: 'French' },
     { code: 'it', name: 'Italian' },
@@ -662,7 +663,7 @@ export default function Home() {
               <label className="block text-lg font-semibold text-gray-900 mb-3">
                 Select Target Language
               </label>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {languages.map((lang) => (
                   <button
                     key={lang.code}
@@ -674,6 +675,7 @@ export default function Home() {
                     }`}
                   >
                     <div className="text-2xl mb-2">
+                      {lang.code === 'en' && '🇬🇧'}
                       {lang.code === 'es' && '🇪🇸'}
                       {lang.code === 'fr' && '🇫🇷'}
                       {lang.code === 'it' && '🇮🇹'}
