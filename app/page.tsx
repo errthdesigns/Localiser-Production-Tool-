@@ -792,23 +792,24 @@ export default function Home() {
                   <span className="text-xl">✨</span>
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900 mb-2">Choose Your Workflow</h3>
-                  <p className="text-sm text-gray-700 mb-3">
-                    <strong>Quick Dubbing:</strong> Skip transcript review and let ElevenLabs handle everything automatically (faster, recommended)
-                  </p>
-                  <p className="text-sm text-gray-700">
-                    <strong>Review Workflow:</strong> Review and edit transcript before dubbing (slower, may have transcription issues)
-                  </p>
+                  <h3 className="font-semibold text-gray-900 mb-2">What happens next?</h3>
+                  <ul className="text-sm text-gray-700 space-y-1">
+                    <li>• ElevenLabs automatically detects all speakers in your video</li>
+                    <li>• AI translates to your chosen language</li>
+                    <li>• Professional voice cloning for each speaker</li>
+                    <li>• Perfect timing synchronization</li>
+                    <li>• Download your dubbed video (takes 2-5 minutes)</li>
+                  </ul>
                 </div>
               </div>
             </div>
 
-            {/* Start Buttons */}
-            <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Start Button */}
+            <div className="mt-8">
               <button
                 onClick={directDubbing}
                 disabled={!videoFile || isLoading}
-                className="bg-gradient-to-r from-green-600 to-emerald-600 text-white py-5 px-8 rounded-2xl text-lg font-bold hover:shadow-xl hover:scale-[1.02] disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all duration-200"
+                className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white py-5 px-8 rounded-2xl text-lg font-bold hover:shadow-xl hover:scale-[1.02] disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all duration-200"
               >
                 {isLoading ? (
                   <span className="flex items-center justify-center gap-3">
@@ -816,27 +817,9 @@ export default function Home() {
                     Processing...
                   </span>
                 ) : (
-                  <span className="flex flex-col items-center gap-1">
-                    <span>⚡ Quick Dubbing</span>
-                    <span className="text-xs font-normal opacity-90">Recommended</span>
-                  </span>
-                )}
-              </button>
-
-              <button
-                onClick={fastDubVideo}
-                disabled={!videoFile || isLoading}
-                className="bg-gradient-to-r from-blue-600 to-purple-600 text-white py-5 px-8 rounded-2xl text-lg font-bold hover:shadow-xl hover:scale-[1.02] disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all duration-200"
-              >
-                {isLoading ? (
-                  <span className="flex items-center justify-center gap-3">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                    Transcribing...
-                  </span>
-                ) : (
-                  <span className="flex flex-col items-center gap-1">
-                    <span>📝 Review Workflow</span>
-                    <span className="text-xs font-normal opacity-90">Edit transcript first</span>
+                  <span className="flex items-center justify-center gap-2">
+                    <span>🎬 Start Dubbing</span>
+                    <span>→</span>
                   </span>
                 )}
               </button>
