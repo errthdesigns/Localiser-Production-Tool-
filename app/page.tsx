@@ -423,7 +423,8 @@ export default function Home() {
 
     while (polls < maxPolls) {
       try {
-        const statusResponse = await fetch(`/api/dub-video/status?dubbingId=${dubbingId}`);
+        // Use the correct status endpoint for dubbing studio
+        const statusResponse = await fetch(`/api/dubbing/status?dubbingId=${dubbingId}`);
 
         if (!statusResponse.ok) {
           throw new Error('Failed to check dubbing status');
@@ -432,13 +433,20 @@ export default function Home() {
         const statusData = await statusResponse.json();
 
         console.log(`[Poll ${polls}] Status: ${statusData.status}`);
-        setProgress(`⏳ Processing... (${Math.floor(polls * 5 / 60)}m ${(polls * 5) % 60}s elapsed)`);
+
+        // Show detailed progress
+        const minutes = Math.floor(polls * 5 / 60);
+        const seconds = (polls * 5) % 60;
+        setProgress(`⏳ Processing transcription and translation (${minutes}m ${seconds}s elapsed)...`);
 
         if (statusData.status === 'dubbed' && statusData.ready) {
           console.log('✓ Dubbing complete! Fetching transcripts...');
 
+          // Use detected source language from status if available
+          const actualSourceLang = statusData.sourceLanguage || sourceLanguageCode;
+
           // Fetch both source and target transcripts
-          await fetchTranscripts(dubbingId, sourceLanguageCode, targetLanguage);
+          await fetchTranscripts(dubbingId, actualSourceLang, targetLanguage);
           return;
         }
 
