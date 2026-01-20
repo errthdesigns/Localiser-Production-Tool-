@@ -40,6 +40,9 @@ export default function Home() {
   const [previewTranslation, setPreviewTranslation] = useState<string>('');
   const [showPreview, setShowPreview] = useState<boolean>(false);
   const [isLoadingPreview, setIsLoadingPreview] = useState<boolean>(false);
+  const [disableVoiceCloning, setDisableVoiceCloning] = useState(false);
+  const [dropBackgroundAudio, setDropBackgroundAudio] = useState(false);
+  const [generatedAudioOnly, setGeneratedAudioOnly] = useState<Blob | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const languages = [
@@ -277,6 +280,63 @@ export default function Home() {
     }
   };
 
+  const downloadAudioOnly = async () => {
+    if (!videoUrl) return;
+
+    setIsLoading(true);
+    setError('');
+    setProgress('Downloading audio-only translation...');
+
+    try {
+      const response = await fetch('/api/translate-and-dub', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoUrl: videoUrl,
+          targetLanguage: targetLanguage,
+          sourceLanguage: undefined,
+          disableVoiceCloning: disableVoiceCloning,
+          dropBackgroundAudio: dropBackgroundAudio,
+          audioOnly: true, // Request audio-only
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Audio download failed');
+      }
+
+      const data = await response.json();
+
+      if (!data.audioData) {
+        throw new Error('API did not return audio data.');
+      }
+
+      // Convert base64 audio to blob
+      const audioBytes = Uint8Array.from(atob(data.audioData), c => c.charCodeAt(0));
+      const audioBlob = new Blob([audioBytes], { type: 'audio/mpeg' });
+
+      setGeneratedAudioOnly(audioBlob);
+
+      // Automatically trigger download
+      const downloadUrl = URL.createObjectURL(audioBlob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = `dubbed-audio-${targetLanguage}.mp3`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(downloadUrl);
+
+    } catch (err) {
+      console.error('Audio download error:', err);
+      setError(err instanceof Error ? err.message : 'Audio download failed');
+    } finally {
+      setIsLoading(false);
+      setProgress('');
+    }
+  };
+
   const directDubbing = async () => {
     if (!videoFile) return;
 
@@ -324,6 +384,9 @@ export default function Home() {
           videoUrl: blob.url,
           targetLanguage: targetLanguage,
           sourceLanguage: undefined, // Let ElevenLabs auto-detect
+          disableVoiceCloning: disableVoiceCloning,
+          dropBackgroundAudio: dropBackgroundAudio,
+          audioOnly: false, // We want video with dubbed audio
         }),
       });
 
@@ -432,6 +495,9 @@ export default function Home() {
           videoUrl: videoUrl,
           targetLanguage: targetLanguage,
           sourceLanguage: detectedLanguage,
+          disableVoiceCloning: disableVoiceCloning,
+          dropBackgroundAudio: dropBackgroundAudio,
+          audioOnly: false,
         }),
       });
 
@@ -785,6 +851,64 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Voice Control Options */}
+            <div className="mt-8 bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-200 rounded-2xl p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <span>🎤</span>
+                Voice Control Options
+              </h3>
+
+              <div className="space-y-4">
+                {/* Disable Voice Cloning */}
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <div className="flex items-center h-6">
+                    <input
+                      type="checkbox"
+                      checked={disableVoiceCloning}
+                      onChange={(e) => setDisableVoiceCloning(e.target.checked)}
+                      className="w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-gray-900 group-hover:text-purple-700 transition">
+                      Disable Voice Cloning
+                    </div>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Use pre-designed synthetic voices from ElevenLabs Voice Library instead of cloning the original voices
+                    </p>
+                  </div>
+                </label>
+
+                {/* Drop Background Audio */}
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <div className="flex items-center h-6">
+                    <input
+                      type="checkbox"
+                      checked={dropBackgroundAudio}
+                      onChange={(e) => setDropBackgroundAudio(e.target.checked)}
+                      className="w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-gray-900 group-hover:text-purple-700 transition">
+                      Remove Background Audio
+                    </div>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Strip background music and sound effects (recommended for speeches/monologues)
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              {disableVoiceCloning && (
+                <div className="mt-4 bg-white border border-purple-300 rounded-xl p-4">
+                  <p className="text-sm text-purple-800 font-medium">
+                    ✓ Voice cloning is disabled. ElevenLabs will automatically select similar voices from their Voice Library.
+                  </p>
+                </div>
+              )}
+            </div>
+
             {/* Info Box */}
             <div className="mt-8 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-2xl p-5">
               <div className="flex items-start gap-4">
@@ -796,7 +920,16 @@ export default function Home() {
                   <ul className="text-sm text-gray-700 space-y-1">
                     <li>• ElevenLabs automatically detects all speakers in your video</li>
                     <li>• AI translates to your chosen language</li>
-                    <li>• Professional voice cloning for each speaker</li>
+                    {disableVoiceCloning ? (
+                      <li>• Uses high-quality synthetic voices from Voice Library</li>
+                    ) : (
+                      <li>• Professional voice cloning for each speaker</li>
+                    )}
+                    {dropBackgroundAudio ? (
+                      <li>• Removes background audio and music</li>
+                    ) : (
+                      <li>• Preserves background music and sound effects</li>
+                    )}
                     <li>• Perfect timing synchronization</li>
                     <li>• Download your dubbed video (takes 2-5 minutes)</li>
                   </ul>
@@ -1065,13 +1198,32 @@ export default function Home() {
                   <video controls className="w-full rounded mb-4">
                     <source src={URL.createObjectURL(generatedVideo)} type="video/mp4" />
                   </video>
-                  <a
-                    href={URL.createObjectURL(generatedVideo)}
-                    download={`dubbed-video-${targetLanguage}.mp4`}
-                    className="inline-block bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 transition"
-                  >
-                    Download Dubbed Video
-                  </a>
+                  <div className="flex gap-3">
+                    <a
+                      href={URL.createObjectURL(generatedVideo)}
+                      download={`dubbed-video-${targetLanguage}.mp4`}
+                      className="flex-1 text-center bg-green-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-green-700 transition shadow-sm"
+                    >
+                      📥 Download Video
+                    </a>
+                    <button
+                      onClick={downloadAudioOnly}
+                      disabled={isLoading}
+                      className="flex-1 bg-purple-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition shadow-sm"
+                    >
+                      {isLoading ? (
+                        <span className="flex items-center justify-center gap-2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          Downloading...
+                        </span>
+                      ) : (
+                        '🎵 Download Audio Only'
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-600 mt-3 text-center">
+                    Download audio separately for custom mixing in your video editor
+                  </p>
                 </div>
               )}
             </div>

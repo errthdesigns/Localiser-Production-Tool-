@@ -14,6 +14,21 @@ export interface DubbingResult {
   dubbed_video_url?: string;
 }
 
+export interface ElevenLabsVoice {
+  voice_id: string;
+  name: string;
+  description?: string;
+  category?: string;
+  preview_url?: string;
+  labels?: Record<string, string>;
+}
+
+export interface VoicesResponse {
+  voices: ElevenLabsVoice[];
+  has_more: boolean;
+  next_page_token?: string;
+}
+
 export class ElevenLabsDubbingService {
   private apiKey: string;
   private baseUrl = 'https://api.elevenlabs.io/v1';
@@ -29,10 +44,20 @@ export class ElevenLabsDubbingService {
     videoFile: File,
     targetLanguage: string,
     sourceLanguage?: string,
-    numSpeakers?: number
+    options?: {
+      numSpeakers?: number;
+      disableVoiceCloning?: boolean;
+      dropBackgroundAudio?: boolean;
+      highestResolution?: boolean;
+    }
   ): Promise<DubbingJob> {
     try {
       console.log('Creating ElevenLabs dubbing job...');
+      console.log('Options:', {
+        disableVoiceCloning: options?.disableVoiceCloning || false,
+        dropBackgroundAudio: options?.dropBackgroundAudio || false,
+        highestResolution: options?.highestResolution || false,
+      });
 
       const formData = new FormData();
       formData.append('file', videoFile);
@@ -42,12 +67,30 @@ export class ElevenLabsDubbingService {
         formData.append('source_lang', sourceLanguage);
       }
 
-      if (numSpeakers) {
-        formData.append('num_speakers', numSpeakers.toString());
+      if (options?.numSpeakers) {
+        formData.append('num_speakers', options.numSpeakers.toString());
       }
 
-      // Optional: highest quality settings
+      // Voice cloning control
+      if (options?.disableVoiceCloning) {
+        formData.append('disable_voice_cloning', 'true');
+        console.log('✓ Voice cloning disabled - will use Voice Library');
+      }
+
+      // Background audio control (keep background music/sound effects by default)
+      if (options?.dropBackgroundAudio) {
+        formData.append('drop_background_audio', 'true');
+        console.log('✓ Background audio will be removed');
+      } else {
+        console.log('✓ Background audio/music will be preserved');
+      }
+
+      // Quality settings
       formData.append('watermark', 'false');
+
+      if (options?.highestResolution) {
+        formData.append('highest_resolution', 'true');
+      }
 
       const response = await fetch(`${this.baseUrl}/dubbing`, {
         method: 'POST',
@@ -97,7 +140,7 @@ export class ElevenLabsDubbingService {
   }
 
   /**
-   * Download the dubbed video
+   * Download the dubbed audio (MP3 format)
    */
   async downloadDubbedVideo(dubbingId: string, targetLanguage: string): Promise<Blob> {
     try {
@@ -112,12 +155,44 @@ export class ElevenLabsDubbingService {
       );
 
       if (!response.ok) {
-        throw new Error(`Failed to download dubbed video: ${response.statusText}`);
+        throw new Error(`Failed to download dubbed audio: ${response.statusText}`);
       }
 
       return await response.blob();
     } catch (error) {
-      console.error('Failed to download dubbed video:', error);
+      console.error('Failed to download dubbed audio:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get list of available voices from ElevenLabs Voice Library
+   */
+  async getAvailableVoices(pageSize: number = 100): Promise<ElevenLabsVoice[]> {
+    try {
+      console.log('Fetching available ElevenLabs voices...');
+
+      const response = await fetch(
+        `https://api.elevenlabs.io/v2/voices?page_size=${pageSize}`,
+        {
+          method: 'GET',
+          headers: {
+            'xi-api-key': this.apiKey,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(`Failed to fetch voices: ${JSON.stringify(error)}`);
+      }
+
+      const data = await response.json() as VoicesResponse;
+      console.log(`✓ Found ${data.voices.length} voices`);
+
+      return data.voices;
+    } catch (error) {
+      console.error('Failed to get available voices:', error);
       throw error;
     }
   }
@@ -151,16 +226,22 @@ export class ElevenLabsDubbingService {
   }
 
   /**
-   * Complete dubbing workflow: create job, wait for completion, download video
+   * Complete dubbing workflow: create job, wait for completion, download audio
    */
   async dubVideo(
     videoFile: File,
     targetLanguage: string,
-    sourceLanguage?: string
+    sourceLanguage?: string,
+    options?: {
+      numSpeakers?: number;
+      disableVoiceCloning?: boolean;
+      dropBackgroundAudio?: boolean;
+      highestResolution?: boolean;
+    }
   ): Promise<{ dubbingId: string; videoBlob: Blob }> {
     try {
       // Create dubbing job
-      const job = await this.createDubbingJob(videoFile, targetLanguage, sourceLanguage);
+      const job = await this.createDubbingJob(videoFile, targetLanguage, sourceLanguage, options);
 
       // Wait for completion
       const completedJob = await this.waitForDubbing(job.dubbing_id);

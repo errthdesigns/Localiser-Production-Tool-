@@ -28,7 +28,14 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { videoUrl, targetLanguage, sourceLanguage } = body;
+    const {
+      videoUrl,
+      targetLanguage,
+      sourceLanguage,
+      disableVoiceCloning,
+      dropBackgroundAudio,
+      audioOnly
+    } = body;
 
     if (!videoUrl || !targetLanguage) {
       return NextResponse.json(
@@ -40,6 +47,9 @@ export async function POST(request: NextRequest) {
     console.log('Target language:', targetLanguage);
     console.log('Source language:', sourceLanguage || 'auto-detect');
     console.log('Video URL:', videoUrl);
+    console.log('Voice cloning:', disableVoiceCloning ? 'DISABLED (using Voice Library)' : 'ENABLED');
+    console.log('Background audio:', dropBackgroundAudio ? 'REMOVED' : 'PRESERVED');
+    console.log('Output mode:', audioOnly ? 'AUDIO ONLY' : 'VIDEO WITH DUBBED AUDIO');
 
     // Step 1: Download original video
     console.log('[1/3] Downloading original video...');
@@ -57,19 +67,28 @@ export async function POST(request: NextRequest) {
 
     // Step 2: Submit to ElevenLabs Dubbing Studio
     console.log('[2/3] Submitting to ElevenLabs Dubbing Studio...');
-    console.log('This will automatically:');
-    console.log('  - Clone all speaker voices');
-    console.log('  - Preserve speaker characteristics');
-    console.log('  - Maintain perfect timing');
-    console.log('  - Handle multiple speakers');
+    if (disableVoiceCloning) {
+      console.log('Using Voice Library voices (voice cloning disabled)');
+    } else {
+      console.log('This will automatically:');
+      console.log('  - Clone all speaker voices');
+      console.log('  - Preserve speaker characteristics');
+      console.log('  - Maintain perfect timing');
+      console.log('  - Handle multiple speakers');
+    }
 
     const dubbingService = new ElevenLabsDubbingService(elevenLabsApiKey);
 
-    // Create dubbing job
+    // Create dubbing job with voice control options
     const job = await dubbingService.createDubbingJob(
       videoFile,
       targetLanguage,
-      sourceLanguage
+      sourceLanguage,
+      {
+        disableVoiceCloning: disableVoiceCloning || false,
+        dropBackgroundAudio: dropBackgroundAudio || false,
+        highestResolution: true,
+      }
     );
 
     console.log('Dubbing job created:', job.dubbing_id);
@@ -87,6 +106,22 @@ export async function POST(request: NextRequest) {
     const dubbedAudioBuffer = await dubbedAudioBlob.arrayBuffer();
 
     console.log('Dubbed audio downloaded:', dubbedAudioBuffer.byteLength, 'bytes');
+
+    // If audio-only mode, return just the audio
+    if (audioOnly) {
+      const audioBase64 = Buffer.from(dubbedAudioBuffer).toString('base64');
+      const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`=== Audio-Only Dubbing Complete in ${duration}s ===`);
+
+      return NextResponse.json({
+        success: true,
+        audioData: audioBase64,
+        dubbingId: job.dubbing_id,
+        processingTime: duration,
+        message: 'Audio dubbed successfully (audio-only mode)',
+        audioOnly: true,
+      });
+    }
 
     // Step 3: Combine original video with dubbed audio using FFmpeg
     console.log('[3/3] Combining video with dubbed audio...');
