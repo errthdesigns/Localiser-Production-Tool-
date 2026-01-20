@@ -37,13 +37,24 @@ export async function POST(request: NextRequest) {
     });
 
     console.log('Submitting transcription job with speaker diarization...');
+    console.log('Language mode:', sourceLanguage || 'AUTO-DETECT');
 
     // Submit transcription with speaker diarization
-    const transcript = await client.transcripts.transcribe({
+    const transcribeConfig: any = {
       audio: videoUrl,
       speaker_labels: true, // Enable speaker diarization
-      language_code: sourceLanguage || 'en',
-    });
+    };
+
+    // Only set language_code if explicitly provided, otherwise let AssemblyAI auto-detect
+    if (sourceLanguage) {
+      transcribeConfig.language_code = sourceLanguage;
+      console.log('Using specified language:', sourceLanguage);
+    } else {
+      // Auto-detect language - don't set language_code
+      console.log('Auto-detecting language from audio...');
+    }
+
+    const transcript = await client.transcripts.transcribe(transcribeConfig);
 
     if (transcript.status === 'error') {
       throw new Error(`Transcription failed: ${transcript.error}`);
@@ -86,12 +97,13 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('Transcript preview:', formattedScript.substring(0, 200) + '...');
+    console.log('Detected language:', transcript.language_code);
 
     return NextResponse.json({
       success: true,
       text: formattedScript,
       rawText: transcript.text || '',
-      language: sourceLanguage || 'en',
+      language: transcript.language_code || sourceLanguage || 'en', // Use detected language
       processingTime: duration,
     });
 
