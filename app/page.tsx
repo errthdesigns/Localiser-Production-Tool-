@@ -43,6 +43,9 @@ export default function Home() {
   const [disableVoiceCloning, setDisableVoiceCloning] = useState(false);
   const [dropBackgroundAudio, setDropBackgroundAudio] = useState(false);
   const [generatedAudioOnly, setGeneratedAudioOnly] = useState<Blob | null>(null);
+  const [sourceTranscript, setSourceTranscript] = useState<string>('');
+  const [targetTranscript, setTargetTranscript] = useState<string>('');
+  const [currentDubbingId, setCurrentDubbingId] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const languages = [
@@ -373,11 +376,10 @@ export default function Home() {
       console.log('Video uploaded to blob:', blob.url);
       setVideoUrl(blob.url);
 
-      // Submit directly to ElevenLabs Dubbing Studio (no transcript review)
-      setProgress('🎬 Submitting to ElevenLabs Dubbing Studio...');
-      setProgress('⏳ Processing with professional AI (this takes 2-5 minutes)...');
+      // Create dubbing job with Dubbing Studio mode
+      setProgress('🎬 Creating dubbing job with ElevenLabs Dubbing Studio...');
 
-      const response = await fetch('/api/translate-and-dub', {
+      const createResponse = await fetch('/api/dubbing/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -386,43 +388,127 @@ export default function Home() {
           sourceLanguage: undefined, // Let ElevenLabs auto-detect
           disableVoiceCloning: disableVoiceCloning,
           dropBackgroundAudio: dropBackgroundAudio,
-          audioOnly: false, // We want video with dubbed audio
         }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Dubbing failed');
+      if (!createResponse.ok) {
+        const errorData = await createResponse.json();
+        throw new Error(errorData.error || 'Failed to create dubbing job');
       }
 
-      const data = await response.json();
+      const createData = await createResponse.json();
+      const dubbingId = createData.dubbingId;
+      const detectedSource = createData.sourceLanguage || 'auto';
 
-      console.log('Dubbing complete!');
-      console.log('Processing time:', data.processingTime, 'seconds');
+      console.log('Dubbing job created:', dubbingId);
+      setCurrentDubbingId(dubbingId);
+      setDetectedLanguage(detectedSource);
 
-      // Verify videoData exists in response
-      if (!data.videoData) {
-        throw new Error('API did not return video data. Check server logs.');
-      }
-
-      console.log('Video data received, size:', data.videoData.length, 'characters (base64)');
-
-      // Convert base64 video to blob
-      const videoBytes = Uint8Array.from(atob(data.videoData), c => c.charCodeAt(0));
-      const videoBlob = new Blob([videoBytes], { type: 'video/mp4' });
-
-      console.log('Video blob created, size:', videoBlob.size, 'bytes');
-
-      setGeneratedVideo(videoBlob);
-      setStep('complete');
+      // Wait for dubbing to complete
+      setProgress('⏳ Processing transcription and translation (2-5 minutes)...');
+      await pollForDubbingCompletion(dubbingId, detectedSource);
 
     } catch (err) {
-      console.error('Direct dubbing error:', err);
+      console.error('Dubbing workflow error:', err);
       setError(err instanceof Error ? err.message : 'Dubbing failed');
       setStep('upload');
-    } finally {
       setIsLoading(false);
       setProgress('');
+    }
+  };
+
+  const pollForDubbingCompletion = async (dubbingId: string, sourceLanguageCode: string) => {
+    const maxPolls = 120; // 10 minutes max (120 * 5 seconds)
+    let polls = 0;
+
+    while (polls < maxPolls) {
+      try {
+        const statusResponse = await fetch(`/api/dub-video/status?dubbingId=${dubbingId}`);
+
+        if (!statusResponse.ok) {
+          throw new Error('Failed to check dubbing status');
+        }
+
+        const statusData = await statusResponse.json();
+
+        console.log(`[Poll ${polls}] Status: ${statusData.status}`);
+        setProgress(`⏳ Processing... (${Math.floor(polls * 5 / 60)}m ${(polls * 5) % 60}s elapsed)`);
+
+        if (statusData.status === 'dubbed' && statusData.ready) {
+          console.log('✓ Dubbing complete! Fetching transcripts...');
+
+          // Fetch both source and target transcripts
+          await fetchTranscripts(dubbingId, sourceLanguageCode, targetLanguage);
+          return;
+        }
+
+        if (statusData.status === 'failed') {
+          throw new Error('Dubbing job failed');
+        }
+
+        // Wait 5 seconds before next poll
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        polls++;
+      } catch (error) {
+        console.error('Polling error:', error);
+        throw error;
+      }
+    }
+
+    throw new Error('Dubbing timed out after 10 minutes');
+  };
+
+  const fetchTranscripts = async (dubbingId: string, sourceLanguageCode: string, targetLanguageCode: string) => {
+    try {
+      setProgress('📄 Fetching transcripts...');
+
+      // Fetch source transcript
+      const sourceResponse = await fetch('/api/dubbing/transcript', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dubbingId: dubbingId,
+          languageCode: sourceLanguageCode,
+          format: 'srt',
+        }),
+      });
+
+      if (!sourceResponse.ok) {
+        throw new Error('Failed to fetch source transcript');
+      }
+
+      const sourceData = await sourceResponse.json();
+      setSourceTranscript(sourceData.transcript);
+      setEditableTranscript(sourceData.transcript);
+      setOriginalText(sourceData.transcript);
+
+      // Fetch target transcript
+      const targetResponse = await fetch('/api/dubbing/transcript', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dubbingId: dubbingId,
+          languageCode: targetLanguageCode,
+          format: 'srt',
+        }),
+      });
+
+      if (!targetResponse.ok) {
+        throw new Error('Failed to fetch target transcript');
+      }
+
+      const targetData = await targetResponse.json();
+      setTargetTranscript(targetData.transcript);
+      setTranslatedText(targetData.transcript);
+
+      console.log('✓ Transcripts fetched successfully');
+      setIsLoading(false);
+      setProgress('');
+      setStep('edit-english'); // Show transcript editing screen
+
+    } catch (error) {
+      console.error('Failed to fetch transcripts:', error);
+      throw error;
     }
   };
 
@@ -471,28 +557,23 @@ export default function Home() {
   };
 
   const completeDubbing = async () => {
-    // Check if source and target languages are the same
-    if (detectedLanguage === targetLanguage) {
-      setError(`Cannot dub ${detectedLanguage.toUpperCase()} to ${languages.find(l => l.code === targetLanguage)?.name}. The video is already in ${languages.find(l => l.code === targetLanguage)?.name}!`);
-      setStep('edit-translation');
-      return;
-    }
-
+    // The dubbing is already complete - we just need to download the final video
     setIsLoading(true);
     setError('');
-    setProgress('Generating dubbed video...');
+    setProgress('Downloading dubbed video...');
     setStep('processing');
 
     try {
-      console.log('Starting ElevenLabs Dubbing Studio...');
+      console.log('Downloading dubbed video...');
+      setProgress('📥 Combining original video with dubbed audio...');
 
-      // Use ElevenLabs Dubbing Studio for professional voice cloning and timing
-      setProgress('🎬 Dubbing video with ElevenLabs Enterprise (voice cloning + perfect timing)...');
+      // Download dubbed video
+      const videoUrl_current = videoUrl; // Use the stored video URL
       const response = await fetch('/api/translate-and-dub', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          videoUrl: videoUrl,
+          videoUrl: videoUrl_current,
           targetLanguage: targetLanguage,
           sourceLanguage: detectedLanguage,
           disableVoiceCloning: disableVoiceCloning,
@@ -503,17 +584,16 @@ export default function Home() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Translation and dubbing failed');
+        throw new Error(errorData.error || 'Failed to download dubbed video');
       }
 
       const data = await response.json();
 
-      console.log('Dubbing complete!');
-      console.log('Processing time:', data.processingTime, 'seconds');
+      console.log('Video downloaded!');
 
       // Verify videoData exists in response
       if (!data.videoData) {
-        throw new Error('API did not return video data. Check server logs for FFmpeg errors.');
+        throw new Error('API did not return video data. Check server logs.');
       }
 
       console.log('Video data received, size:', data.videoData.length, 'characters (base64)');
@@ -528,8 +608,8 @@ export default function Home() {
       setStep('complete');
 
     } catch (err) {
-      console.error('Dubbing error:', err);
-      setError(err instanceof Error ? err.message : 'Dubbing failed');
+      console.error('Download error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to download video');
       setStep('edit-translation');
     } finally {
       setIsLoading(false);
@@ -916,22 +996,23 @@ export default function Home() {
                   <span className="text-xl">✨</span>
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900 mb-2">What happens next?</h3>
+                  <h3 className="font-semibold text-gray-900 mb-2">Dubbing Studio Workflow:</h3>
                   <ul className="text-sm text-gray-700 space-y-1">
-                    <li>• ElevenLabs automatically detects all speakers in your video</li>
-                    <li>• AI translates to your chosen language</li>
+                    <li>• <strong>Step 1:</strong> AI transcribes and detects all speakers</li>
+                    <li>• <strong>Step 2:</strong> Review and edit the original transcript</li>
+                    <li>• <strong>Step 3:</strong> AI translates to {languages.find(l => l.code === targetLanguage)?.name}</li>
+                    <li>• <strong>Step 4:</strong> Review and edit the translation</li>
                     {disableVoiceCloning ? (
-                      <li>• Uses high-quality synthetic voices from Voice Library</li>
+                      <li>• <strong>Step 5:</strong> Generate with Voice Library voices</li>
                     ) : (
-                      <li>• Professional voice cloning for each speaker</li>
+                      <li>• <strong>Step 6:</strong> Generate with voice cloning</li>
                     )}
                     {dropBackgroundAudio ? (
-                      <li>• Removes background audio and music</li>
+                      <li>• Background audio removed</li>
                     ) : (
-                      <li>• Preserves background music and sound effects</li>
+                      <li>• Background music preserved</li>
                     )}
-                    <li>• Perfect timing synchronization</li>
-                    <li>• Download your dubbed video (takes 2-5 minutes)</li>
+                    <li>• <strong>Total time:</strong> 2-5 minutes</li>
                   </ul>
                 </div>
               </div>
