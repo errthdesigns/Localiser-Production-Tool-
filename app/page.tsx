@@ -582,55 +582,59 @@ export default function Home() {
   };
 
   const completeDubbing = async () => {
-    // The dubbing is already complete - we just need to download the final video
+    // Download the dubbed video using the existing dubbing job
+    if (!currentDubbingId) {
+      setError('No dubbing ID found. Please start over.');
+      return;
+    }
+
     setIsLoading(true);
     setError('');
-    setProgress('Downloading dubbed video...');
+    setProgress('Downloading dubbed audio...');
     setStep('processing');
 
     try {
-      console.log('Downloading dubbed video...');
-      setProgress('📥 Combining original video with dubbed audio...');
+      console.log('Downloading dubbed audio from existing job:', currentDubbingId);
 
-      // Download dubbed video
-      const videoUrl_current = videoUrl; // Use the stored video URL
-      const response = await fetch('/api/translate-and-dub', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          videoUrl: videoUrl_current,
-          targetLanguage: targetLanguage,
-          sourceLanguage: detectedLanguage,
-          disableVoiceCloning: disableVoiceCloning,
-          dropBackgroundAudio: dropBackgroundAudio,
-          audioOnly: false,
-        }),
-      });
+      // Download the dubbed audio directly from ElevenLabs
+      const elevenLabsApiKey = process.env.NEXT_PUBLIC_ELEVENLABS_API_KEY;
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to download dubbed video');
+      if (!elevenLabsApiKey) {
+        // Call our API to download and combine
+        setProgress('📥 Fetching dubbed audio and combining with video...');
+
+        const response = await fetch('/api/dubbing/download', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            dubbingId: currentDubbingId,
+            targetLanguage: targetLanguage,
+            videoUrl: videoUrl,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to download dubbed video');
+        }
+
+        const data = await response.json();
+
+        if (!data.videoData) {
+          throw new Error('API did not return video data.');
+        }
+
+        console.log('Video data received, size:', data.videoData.length, 'characters (base64)');
+
+        // Convert base64 video to blob
+        const videoBytes = Uint8Array.from(atob(data.videoData), c => c.charCodeAt(0));
+        const videoBlob = new Blob([videoBytes], { type: 'video/mp4' });
+
+        console.log('Video blob created, size:', videoBlob.size, 'bytes');
+
+        setGeneratedVideo(videoBlob);
+        setStep('complete');
       }
-
-      const data = await response.json();
-
-      console.log('Video downloaded!');
-
-      // Verify videoData exists in response
-      if (!data.videoData) {
-        throw new Error('API did not return video data. Check server logs.');
-      }
-
-      console.log('Video data received, size:', data.videoData.length, 'characters (base64)');
-
-      // Convert base64 video to blob
-      const videoBytes = Uint8Array.from(atob(data.videoData), c => c.charCodeAt(0));
-      const videoBlob = new Blob([videoBytes], { type: 'video/mp4' });
-
-      console.log('Video blob created, size:', videoBlob.size, 'bytes');
-
-      setGeneratedVideo(videoBlob);
-      setStep('complete');
 
     } catch (err) {
       console.error('Download error:', err);
