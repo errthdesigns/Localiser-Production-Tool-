@@ -190,9 +190,8 @@ export default function Home() {
         } else if (data.status === 'failed') {
           if (pollInterval.current) {
             clearInterval(pollInterval.current);
-            }
-            setError(data.job.error || 'Job failed');
           }
+          setError('Dubbing failed');
         }
       } catch (err) {
         console.error('Polling error:', err);
@@ -260,40 +259,42 @@ export default function Home() {
   };
 
   const saveTranscriptAndGenerate = async () => {
-    if (!jobId || !targetTranscript) return;
+    if (!dubbingId || !targetTranscript) return;
 
     setIsLoading(true);
     setError('');
 
     try {
-      // Save edited transcript
-      await fetch(`/api/jobs/${jobId}/transcript`, {
+      // Download the final dubbed video
+      const downloadResponse = await fetch('/api/dubbing/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          segments: editedSegments,
-          language: targetLanguage
+          dubbingId,
+          targetLanguage,
+          videoUrl
         })
       });
 
-      // Save voice mappings
-      for (const [speakerId, mapping] of voiceMappings.entries()) {
-        await fetch(`/api/jobs/${jobId}/voices`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            speakerId,
-            speakerName: speakerId,
-            voiceId: mapping.voiceId,
-            voiceName: mapping.voiceName
-          })
-        });
+      if (!downloadResponse.ok) {
+        throw new Error('Failed to download dubbed video');
       }
 
-      // Job will automatically continue processing from where it left off
-      // Start polling again
-      setScreen('progress');
-      startPolling(jobId);
+      const downloadData = await downloadResponse.json();
+
+      // Convert base64 to blob URL for download
+      const videoData = downloadData.videoData;
+      const byteCharacters = atob(videoData);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'video/mp4' });
+      const url = URL.createObjectURL(blob);
+
+      setOutputVideoUrl(url);
+      setScreen('output');
 
     } catch (err) {
       console.error('Generate error:', err);
