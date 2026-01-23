@@ -2,7 +2,10 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 
-const DB_PATH = process.env.DATABASE_PATH || path.join(process.cwd(), 'data', 'scriptshift.db');
+// Use /tmp in production (Vercel), local data dir in development
+const isVercel = process.env.VERCEL === '1';
+const DB_PATH = process.env.DATABASE_PATH ||
+  (isVercel ? '/tmp/scriptshift.db' : path.join(process.cwd(), 'data', 'scriptshift.db'));
 
 // Ensure data directory exists
 const dataDir = path.dirname(DB_PATH);
