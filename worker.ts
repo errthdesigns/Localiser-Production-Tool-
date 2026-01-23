@@ -313,43 +313,158 @@ async function generateDubbedAudio(
   fileHash: string,
   onProgress: (progress: number) => void
 ): Promise<string> {
-  // For now, use a simple TTS approach
-  // TODO: Implement ElevenLabs TTS per segment with voice mapping
+  const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY!;
 
+  // Get voice mappings for this job
+  const voiceMappings = voiceMappingQueries.getByJobId.all(jobId) as any[];
+  const voiceMap = new Map(
+    voiceMappings.map(v => [v.speaker_id, v.voice_id])
+  );
+
+  // Default voice if no mapping
+  const defaultVoiceId = 'EXAVITQu4vr4xnSDxMaL'; // ElevenLabs default voice (Sarah)
+
+  // Generate TTS for each segment
+  const segmentAudioFiles: { start: number; end: number; file: string }[] = [];
+  const totalSegments = transcript.segments.length;
+
+  for (let i = 0; i < transcript.segments.length; i++) {
+    const segment = transcript.segments[i];
+    const voiceId = voiceMap.get(segment.speaker) || defaultVoiceId;
+
+    console.log(`[Worker] Generating TTS for segment ${i + 1}/${totalSegments}: ${segment.text.substring(0, 50)}...`);
+
+    // Call ElevenLabs TTS API
+    const response = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+      {
+        method: 'POST',
+        headers: {
+          'Accept': 'audio/mpeg',
+          'Content-Type': 'application/json',
+          'xi-api-key': elevenLabsApiKey
+        },
+        body: JSON.stringify({
+          text: segment.text,
+          model_id: 'eleven_multilingual_v2',
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.75
+          }
+        })
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`ElevenLabs TTS failed for segment ${i}: ${error}`);
+    }
+
+    const audioBuffer = await response.arrayBuffer();
+    const segmentPath = path.join(TEMP_DIR, `${fileHash}-segment-${i}.mp3`);
+    fs.writeFileSync(segmentPath, Buffer.from(audioBuffer));
+
+    segmentAudioFiles.push({
+      start: segment.start,
+      end: segment.end,
+      file: segmentPath
+    });
+
+    onProgress(Math.floor(((i + 1) / totalSegments) * 100));
+  }
+
+  // Combine all segments with silence padding to match timestamps
   const outputPath = path.join(TEMP_DIR, `${fileHash}-dubbed.mp3`);
+  await combineSegmentsWithTimestamps(segmentAudioFiles, outputPath);
 
-  // This is a placeholder - you'll need to implement actual ElevenLabs TTS
-  // For now, just copy the original audio
-  throw new Error('TTS generation not yet implemented - please implement ElevenLabs TTS per segment');
+  // Cleanup segment files
+  for (const seg of segmentAudioFiles) {
+    fs.unlinkSync(seg.file);
+  }
+
+  return outputPath;
+}
+
+async function combineSegmentsWithTimestamps(
+  segments: { start: number; end: number; file: string }[],
+  outputPath: string
+): Promise<void> {
+  // Create FFmpeg filter to place each segment at correct timestamp
+  const filterParts: string[] = [];
+  const inputs: string[] = [];
+
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    inputs.push(`-i "${seg.file}"`);
+
+    // Add delay filter to position audio at correct timestamp
+    const delayMs = Math.floor(seg.start * 1000);
+    filterParts.push(`[${i}]adelay=${delayMs}|${delayMs}[a${i}]`);
+  }
+
+  // Mix all delayed segments
+  const mixInputs = segments.map((_, i) => `[a${i}]`).join('');
+  const mixFilter = `${mixInputs}amix=inputs=${segments.length}:duration=longest`;
+
+  const fullFilter = `${filterParts.join(';')};${mixFilter}`;
+
+  const command = `ffmpeg ${inputs.join(' ')} -filter_complex "${fullFilter}" "${outputPath}" -y`;
+
+  await execAsync(command);
 }
 
 async function mixAudioWithVideo(
   videoUrl: string,
-  audioPath: string,
+  dubbedAudioPath: string,
   jobId: string,
   fileHash: string
 ): Promise<string> {
+  // Download original video
   const videoPath = path.join(TEMP_DIR, `${fileHash}-original.mp4`);
   const response = await fetch(videoUrl);
   const buffer = await response.arrayBuffer();
   fs.writeFileSync(videoPath, Buffer.from(buffer));
 
-  const outputPath = path.join(TEMP_DIR, `${fileHash}-final.mp4`);
+  // Extract original audio
+  const originalAudioPath = path.join(TEMP_DIR, `${fileHash}-original-audio.mp3`);
+  await execAsync(`ffmpeg -i "${videoPath}" -vn -acodec libmp3lame -q:a 2 "${originalAudioPath}" -y`);
 
-  // Mix audio with video
+  // Mix dubbed audio over original with ducking
+  // Strategy: Original audio at 25% volume when dubbed voice is playing, 100% during silence
+  const mixedAudioPath = path.join(TEMP_DIR, `${fileHash}-mixed-audio.mp3`);
+
+  // Simple mix: Overlay dubbed audio on top of original at reduced volume
   await execAsync(
-    `ffmpeg -i "${videoPath}" -i "${audioPath}" -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest "${outputPath}" -y`
+    `ffmpeg -i "${originalAudioPath}" -i "${dubbedAudioPath}" ` +
+    `-filter_complex "[0]volume=0.25[bg];[bg][1]amix=inputs=2:duration=first:dropout_transition=2" ` +
+    `"${mixedAudioPath}" -y`
   );
 
+  // Combine mixed audio with original video
+  const outputPath = path.join(TEMP_DIR, `${fileHash}-final.mp4`);
+  await execAsync(
+    `ffmpeg -i "${videoPath}" -i "${mixedAudioPath}" -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest "${outputPath}" -y`
+  );
+
+  // Cleanup
   fs.unlinkSync(videoPath);
+  fs.unlinkSync(originalAudioPath);
+  fs.unlinkSync(mixedAudioPath);
 
   return outputPath;
 }
 
 async function uploadToBlob(filePath: string, filename: string): Promise<string> {
-  // TODO: Implement Vercel Blob upload
-  // For now, return a placeholder
-  return `https://blob.vercel-storage.com/${filename}`;
+  const { put } = await import('@vercel/blob');
+
+  const fileBuffer = fs.readFileSync(filePath);
+  const blob = await put(filename, fileBuffer, {
+    access: 'public',
+    addRandomSuffix: false
+  });
+
+  console.log(`[Worker] Uploaded ${filename} to ${blob.url}`);
+  return blob.url;
 }
 
 async function processLipSync(videoUrl: string, jobId: string): Promise<string | undefined> {
