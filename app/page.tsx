@@ -46,7 +46,22 @@ export default function Home() {
   const [sourceTranscript, setSourceTranscript] = useState<string>('');
   const [targetTranscript, setTargetTranscript] = useState<string>('');
   const [currentDubbingId, setCurrentDubbingId] = useState<string>('');
+  const [demoMode, setDemoMode] = useState(false); // Skip waiting for demo
+  const [availableVoices, setAvailableVoices] = useState<any[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch available voices on mount
+  const fetchAvailableVoices = async () => {
+    try {
+      const response = await fetch('/api/elevenlabs/voices');
+      if (response.ok) {
+        const data = await response.json();
+        setAvailableVoices(data.voices || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch voices:', error);
+    }
+  };
 
   const languages = [
     { code: 'en', name: 'English' },
@@ -376,7 +391,128 @@ export default function Home() {
       console.log('Video uploaded to blob:', blob.url);
       setVideoUrl(blob.url);
 
-      // Create dubbing job with Dubbing Studio mode
+      // DEMO MODE: Skip API calls and show mock transcripts immediately
+      if (demoMode) {
+        console.log('🚀 DEMO MODE: Using mock data for instant preview');
+        setProgress('✨ Demo mode: Loading instant preview...');
+
+        // Mock transcripts
+        const mockSourceTranscript = `1
+00:00:00,000 --> 00:00:03,500
+[SPEAKER 1]
+Welcome to our product demonstration.
+
+2
+00:00:03,500 --> 00:00:07,000
+[SPEAKER 1]
+Today we'll show you how our software works.
+
+3
+00:00:07,000 --> 00:00:10,500
+[SPEAKER 2]
+This technology will revolutionize your workflow.
+
+4
+00:00:10,500 --> 00:00:14,000
+[SPEAKER 2]
+Let's dive into the key features.`;
+
+        const mockTargetTranscript = targetLanguage === 'es'
+          ? `1
+00:00:00,000 --> 00:00:03,500
+[SPEAKER 1]
+Bienvenido a nuestra demostración de producto.
+
+2
+00:00:03,500 --> 00:00:07,000
+[SPEAKER 1]
+Hoy le mostraremos cómo funciona nuestro software.
+
+3
+00:00:07,000 --> 00:00:10,500
+[SPEAKER 2]
+Esta tecnología revolucionará su flujo de trabajo.
+
+4
+00:00:10,500 --> 00:00:14,000
+[SPEAKER 2]
+Profundicemos en las características clave.`
+          : targetLanguage === 'fr'
+          ? `1
+00:00:00,000 --> 00:00:03,500
+[SPEAKER 1]
+Bienvenue à notre démonstration de produit.
+
+2
+00:00:03,500 --> 00:00:07,000
+[SPEAKER 1]
+Aujourd'hui, nous vous montrerons comment fonctionne notre logiciel.
+
+3
+00:00:07,000 --> 00:00:10,500
+[SPEAKER 2]
+Cette technologie révolutionnera votre flux de travail.
+
+4
+00:00:10,500 --> 00:00:14,000
+[SPEAKER 2]
+Plongeons dans les fonctionnalités clés.`
+          : targetLanguage === 'it'
+          ? `1
+00:00:00,000 --> 00:00:03,500
+[SPEAKER 1]
+Benvenuti alla nostra dimostrazione del prodotto.
+
+2
+00:00:03,500 --> 00:00:07,000
+[SPEAKER 1]
+Oggi vi mostreremo come funziona il nostro software.
+
+3
+00:00:07,000 --> 00:00:10,500
+[SPEAKER 2]
+Questa tecnologia rivoluzionerà il vostro flusso di lavoro.
+
+4
+00:00:10,500 --> 00:00:14,000
+[SPEAKER 2]
+Approfondiamo le caratteristiche principali.`
+          : `1
+00:00:00,000 --> 00:00:03,500
+[SPEAKER 1]
+Welcome to our product demonstration.
+
+2
+00:00:03,500 --> 00:00:07,000
+[SPEAKER 1]
+Today we'll show you how our software works.
+
+3
+00:00:07,000 --> 00:00:10,500
+[SPEAKER 2]
+This technology will revolutionize your workflow.
+
+4
+00:00:10,500 --> 00:00:14,000
+[SPEAKER 2]
+Let's dive into the key features.`;
+
+        // Set mock data
+        setSourceTranscript(mockSourceTranscript);
+        setTargetTranscript(mockTargetTranscript);
+        setDetectedLanguage('en');
+        setCurrentDubbingId('demo-mode-id');
+
+        // Wait a moment for effect
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        setIsLoading(false);
+        setProgress('');
+        setStep('edit-translation');
+        return;
+      }
+
+      // PRODUCTION MODE: Full API workflow
       setProgress('🎬 Creating dubbing job with ElevenLabs Dubbing Studio...');
 
       const createResponse = await fetch('/api/dubbing/create', {
@@ -582,7 +718,29 @@ export default function Home() {
   };
 
   const completeDubbing = async () => {
-    // Download the dubbed video using the existing dubbing job
+    // DEMO MODE: Skip download and show demo complete screen
+    if (demoMode) {
+      console.log('🚀 DEMO MODE: Skipping video generation');
+      setIsLoading(true);
+      setProgress('✨ Demo mode: Preparing preview...');
+
+      // Wait a moment for effect
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Use the uploaded video as the "generated" video for demo
+      if (videoUrl) {
+        const response = await fetch(videoUrl);
+        const blob = await response.blob();
+        setGeneratedVideo(blob);
+      }
+
+      setIsLoading(false);
+      setProgress('');
+      setStep('complete');
+      return;
+    }
+
+    // PRODUCTION MODE: Download the dubbed video using the existing dubbing job
     if (!currentDubbingId) {
       setError('No dubbing ID found. Please start over.');
       return;
@@ -1007,12 +1165,40 @@ export default function Home() {
                     </p>
                   </div>
                 </label>
+
+                {/* Demo Mode */}
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <div className="flex items-center h-6">
+                    <input
+                      type="checkbox"
+                      checked={demoMode}
+                      onChange={(e) => setDemoMode(e.target.checked)}
+                      className="w-5 h-5 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-gray-900 group-hover:text-orange-700 transition">
+                      🚀 Demo Mode (Instant Preview)
+                    </div>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Skip API processing and use mock transcripts for instant UI testing (perfect for client demos)
+                    </p>
+                  </div>
+                </label>
               </div>
 
               {disableVoiceCloning && (
                 <div className="mt-4 bg-white border border-purple-300 rounded-xl p-4">
                   <p className="text-sm text-purple-800 font-medium">
                     ✓ Voice cloning is disabled. ElevenLabs will automatically select similar voices from their Voice Library.
+                  </p>
+                </div>
+              )}
+
+              {demoMode && (
+                <div className="mt-4 bg-orange-50 border border-orange-300 rounded-xl p-4">
+                  <p className="text-sm text-orange-800 font-medium">
+                    🚀 <strong>Demo Mode Active:</strong> Will skip 6-minute processing and show instant mock transcripts for UI testing. Perfect for demos!
                   </p>
                 </div>
               )}
@@ -1193,76 +1379,178 @@ export default function Home() {
           </div>
         )}
 
-        {/* Step 3: Edit Translation (Side-by-Side like ElevenLabs UI) */}
+        {/* Step 3: Edit Translation (ElevenLabs UI Layout: Transcripts Left, Video Right) */}
         {step === 'edit-translation' && (
-          <div className="bg-white rounded-3xl shadow-xl p-10 border border-gray-100">
-            <h2 className="text-3xl font-bold text-gray-900 mb-3">📝 Review Transcripts & Translation</h2>
+          <div className="bg-white rounded-3xl shadow-xl p-8 border border-gray-100">
+            <div className="mb-6">
+              <h2 className="text-3xl font-bold text-gray-900 mb-2">📝 Dubbing Studio</h2>
+              <p className="text-gray-600">Review and edit transcripts - Just like ElevenLabs UI</p>
+            </div>
 
-            <div className="bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-200 rounded-2xl p-5 mb-8">
+            <div className="bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-200 rounded-2xl p-4 mb-6">
               <p className="text-sm text-green-900 font-semibold">
                 <strong>Translation:</strong> {detectedLanguage.toUpperCase()} → {languages.find(l => l.code === targetLanguage)?.name}
-              </p>
-              <p className="text-xs text-green-700 mt-2">
-                ✏️ <strong>Just like ElevenLabs Dubbing Studio:</strong> Review both transcripts side-by-side. Edit any text before generating the final video!
+                {demoMode && <span className="ml-3 bg-orange-500 text-white px-2 py-1 rounded text-xs">🚀 DEMO MODE</span>}
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-6 mb-8">
-              {/* Original Transcript */}
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-2xl">🎤</span>
-                  <label className="text-lg font-bold text-gray-900">
-                    Original ({detectedLanguage.toUpperCase()})
-                  </label>
-                  <span className="text-sm text-gray-500 ml-auto">
-                    {sourceTranscript.length} chars
-                  </span>
+            {/* ElevenLabs Layout: Transcripts LEFT, Video RIGHT */}
+            <div className="grid grid-cols-[1.5fr,1fr] gap-6 mb-6">
+              {/* LEFT: Transcript Segments */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <span>📄</span>
+                  Transcripts & Translation
+                </h3>
+
+                {/* Original Transcript */}
+                <div className="border-2 border-gray-300 rounded-2xl p-4 bg-gray-50">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-lg">🎤</span>
+                    <label className="text-sm font-bold text-gray-900">
+                      Original ({detectedLanguage.toUpperCase()})
+                    </label>
+                    <span className="text-xs text-gray-500 ml-auto">
+                      {sourceTranscript.length} chars
+                    </span>
+                  </div>
+                  <textarea
+                    value={sourceTranscript}
+                    onChange={(e) => setSourceTranscript(e.target.value)}
+                    rows={12}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-xs leading-relaxed bg-white resize-none"
+                    placeholder="Original transcript..."
+                    style={{ lineHeight: '1.6' }}
+                  />
                 </div>
-                <textarea
-                  value={sourceTranscript}
-                  onChange={(e) => setSourceTranscript(e.target.value)}
-                  rows={20}
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm leading-relaxed bg-gray-50 resize-none"
-                  placeholder="Original transcript..."
-                  style={{ lineHeight: '1.8' }}
-                />
-                <p className="text-xs text-gray-500 mt-2">
-                  Source language transcript with speaker labels
-                </p>
+
+                {/* Translation */}
+                <div className="border-2 border-green-400 rounded-2xl p-4 bg-green-50">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-lg">🌍</span>
+                    <label className="text-sm font-bold text-gray-900">
+                      Translation ({languages.find(l => l.code === targetLanguage)?.name})
+                    </label>
+                    <span className="text-xs text-gray-500 ml-auto">
+                      {targetTranscript.length} chars
+                    </span>
+                  </div>
+                  <textarea
+                    value={targetTranscript}
+                    onChange={(e) => setTargetTranscript(e.target.value)}
+                    rows={12}
+                    className="w-full px-3 py-2 border border-green-400 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 font-mono text-xs leading-relaxed bg-white resize-none"
+                    placeholder="Translated transcript..."
+                    style={{ lineHeight: '1.6' }}
+                  />
+                  <p className="text-xs text-gray-600 mt-2">
+                    ✏️ Edit the translation freely - AI will re-generate dubbed audio with your changes
+                  </p>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                  <p className="text-xs text-blue-800">
+                    <strong>💡 Tip:</strong> Transcripts are in SRT format with timestamps and speaker labels. Edit text while keeping timing structure.
+                  </p>
+                </div>
               </div>
 
-              {/* Translation */}
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-2xl">🌍</span>
-                  <label className="text-lg font-bold text-gray-900">
-                    Translation ({languages.find(l => l.code === targetLanguage)?.name})
-                  </label>
-                  <span className="text-sm text-gray-500 ml-auto">
-                    {targetTranscript.length} chars
-                  </span>
+              {/* RIGHT: Video Player & Controls */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <span>🎬</span>
+                  Video Preview
+                </h3>
+
+                {/* Video Player */}
+                <div className="border-2 border-gray-300 rounded-2xl p-4 bg-gray-50">
+                  {videoUrl ? (
+                    <div>
+                      <video
+                        controls
+                        className="w-full rounded-lg shadow-lg"
+                        style={{ maxHeight: '400px' }}
+                      >
+                        <source src={videoUrl} type="video/mp4" />
+                      </video>
+                      <p className="text-xs text-gray-600 mt-2 text-center">
+                        Original video preview
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="w-full h-64 bg-gray-200 rounded-lg flex items-center justify-center">
+                      <div className="text-center text-gray-500">
+                        <span className="text-4xl">🎥</span>
+                        <p className="text-sm mt-2">Video preview</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <textarea
-                  value={targetTranscript}
-                  onChange={(e) => setTargetTranscript(e.target.value)}
-                  rows={20}
-                  className="w-full px-4 py-3 border-2 border-green-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 font-mono text-sm leading-relaxed bg-green-50 resize-none"
-                  placeholder="Translated transcript..."
-                  style={{ lineHeight: '1.8' }}
-                />
-                <p className="text-xs text-gray-500 mt-2">
-                  Translated transcript - edit freely to fix any mistakes
-                </p>
+
+                {/* Voice Selector */}
+                <div className="border-2 border-purple-300 rounded-2xl p-4 bg-purple-50">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-lg">🎙️</span>
+                    <label className="text-sm font-bold text-gray-900">
+                      Voice Selection
+                    </label>
+                  </div>
+
+                  {availableVoices.length > 0 ? (
+                    <select
+                      value={selectedVoiceId}
+                      onChange={(e) => setSelectedVoiceId(e.target.value)}
+                      className="w-full px-3 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 bg-white text-sm"
+                    >
+                      <option value="">Auto-select voice</option>
+                      {availableVoices.map((voice) => (
+                        <option key={voice.voice_id} value={voice.voice_id}>
+                          {voice.name} ({voice.voice_id.substring(0, 8)}...)
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <button
+                      onClick={fetchAvailableVoices}
+                      className="w-full px-3 py-2 bg-purple-600 text-white rounded-lg text-sm font-semibold hover:bg-purple-700 transition"
+                    >
+                      Load Available Voices
+                    </button>
+                  )}
+
+                  <p className="text-xs text-gray-600 mt-2">
+                    Select a custom voice from your ElevenLabs Voice Library
+                  </p>
+                </div>
+
+                {/* Audio-Only Download Option */}
+                <div className="border-2 border-orange-300 rounded-2xl p-4 bg-orange-50">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-lg">🎵</span>
+                    <label className="text-sm font-bold text-gray-900">
+                      Audio-Only Export
+                    </label>
+                  </div>
+                  <p className="text-xs text-gray-600 mb-3">
+                    Download just the dubbed audio track for custom mixing in your video editor
+                  </p>
+                  <button
+                    onClick={downloadAudioOnly}
+                    disabled={isLoading || !videoUrl || demoMode}
+                    className="w-full px-3 py-2 bg-orange-600 text-white rounded-lg text-sm font-semibold hover:bg-orange-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition"
+                  >
+                    {isLoading ? 'Downloading...' : '🎵 Download Audio Only'}
+                  </button>
+                  {demoMode && (
+                    <p className="text-xs text-orange-700 mt-2 text-center">
+                      Not available in demo mode
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
 
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
-              <p className="text-sm text-blue-800">
-                <strong>💡 Tip:</strong> The transcripts are in SRT format with timestamps. You can edit the text while keeping the timing structure. ElevenLabs will generate dubbed audio matching your edited text.
-              </p>
-            </div>
-
+            {/* Action Buttons */}
             <div className="flex gap-4">
               <button
                 onClick={() => setStep('upload')}
@@ -1272,13 +1560,18 @@ export default function Home() {
               </button>
               <button
                 onClick={completeDubbing}
-                disabled={isLoading || !targetTranscript.trim()}
+                disabled={(isLoading || !targetTranscript.trim()) && !demoMode}
                 className="flex-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white py-4 px-12 rounded-2xl font-bold hover:shadow-xl hover:scale-[1.02] disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all duration-200"
               >
                 {isLoading ? (
                   <span className="flex items-center justify-center gap-3">
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
                     Generating Video...
+                  </span>
+                ) : demoMode ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span>✨ Complete Demo</span>
+                    <span>→</span>
                   </span>
                 ) : (
                   <span className="flex items-center justify-center gap-2">
@@ -1303,9 +1596,23 @@ export default function Home() {
         {/* Step 4: Complete */}
         {step === 'complete' && (
           <div className="bg-white rounded-lg shadow-lg p-8">
-            <h2 className="text-2xl font-semibold mb-4 text-green-600">
+            <h2 className="text-2xl font-semibold mb-4 text-green-600 flex items-center gap-2">
               ✓ Localization Complete!
+              {demoMode && (
+                <span className="text-sm bg-orange-500 text-white px-3 py-1 rounded-lg">🚀 DEMO MODE</span>
+              )}
             </h2>
+
+            {demoMode && (
+              <div className="bg-orange-50 border-2 border-orange-300 rounded-xl p-4 mb-6">
+                <p className="text-sm text-orange-900 font-semibold mb-2">
+                  🚀 Demo Mode Active
+                </p>
+                <p className="text-xs text-orange-800">
+                  You're viewing a demo preview with mock transcripts. In production mode, this would be your fully dubbed video with AI-generated multilingual audio.
+                </p>
+              </div>
+            )}
 
             <div className="space-y-4">
               {/* Show transcription and translation for fast mode */}
@@ -1353,7 +1660,7 @@ export default function Home() {
                     </a>
                     <button
                       onClick={downloadAudioOnly}
-                      disabled={isLoading}
+                      disabled={isLoading || demoMode}
                       className="flex-1 bg-purple-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition shadow-sm"
                     >
                       {isLoading ? (
@@ -1361,6 +1668,8 @@ export default function Home() {
                           <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                           Downloading...
                         </span>
+                      ) : demoMode ? (
+                        '🎵 Audio Only (Demo Mode)'
                       ) : (
                         '🎵 Download Audio Only'
                       )}
