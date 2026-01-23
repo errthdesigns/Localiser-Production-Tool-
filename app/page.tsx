@@ -541,7 +541,7 @@ export default function Home() {
                   setScreen('upload');
                   setVideoFile(null);
                   setVideoUrl('');
-                  setJobId('');
+                  setDubbingId('');
                 }}
                 className="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-700 transition"
               >
