@@ -39,7 +39,7 @@ export default function Home() {
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoUrl, setVideoUrl] = useState<string>('');
   const [targetLanguage, setTargetLanguage] = useState('es');
-  const [jobId, setJobId] = useState<string>('');
+  const [dubbingId, setDubbingId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>('');
 
@@ -110,26 +110,48 @@ export default function Home() {
     setError('');
 
     try {
-      const formData = new FormData();
-      formData.append('file', videoFile);
-      formData.append('targetLanguage', targetLanguage);
+      // Step 1: Upload video to Vercel Blob
+      setProgressStage('Uploading video...');
+      const uploadFormData = new FormData();
+      uploadFormData.append('file', videoFile);
 
-      const response = await fetch('/api/jobs/upload', {
+      const uploadResponse = await fetch('/api/upload', {
         method: 'POST',
-        body: formData
+        body: uploadFormData
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Upload failed');
+      if (!uploadResponse.ok) {
+        throw new Error('Video upload failed');
       }
 
-      const data = await response.json();
-      setJobId(data.jobId);
-      setVideoUrl(data.fileUrl);
+      const uploadData = await uploadResponse.json();
+      const blobUrl = uploadData.url;
+      setVideoUrl(blobUrl);
 
-      // Start polling for job status
-      startPolling(data.jobId);
+      // Step 2: Create ElevenLabs dubbing job
+      setProgressStage('Creating dubbing job...');
+      const dubbingResponse = await fetch('/api/dubbing/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoUrl: blobUrl,
+          targetLanguage,
+          sourceLanguage: 'auto',
+          dropBackgroundAudio: false, // Keep background audio
+          dubbingStudio: true // Enable transcript editing
+        })
+      });
+
+      if (!dubbingResponse.ok) {
+        const errorData = await dubbingResponse.json();
+        throw new Error(errorData.error || 'Failed to create dubbing job');
+      }
+
+      const dubbingData = await dubbingResponse.json();
+      setDubbingId(dubbingData.dubbingId);
+
+      // Start polling for dubbing status
+      startPolling(dubbingData.dubbingId);
 
       setScreen('progress');
 
@@ -148,27 +170,26 @@ export default function Home() {
 
     pollInterval.current = setInterval(async () => {
       try {
-        const response = await fetch(`/api/jobs/${id}/status`);
+        const response = await fetch(`/api/dubbing/status?dubbingId=${id}`);
         const data = await response.json();
 
-        if (data.job) {
-          setJobStatus(data.job);
-          setProgressStage(data.job.currentStage || '');
-          setProgressPercent(data.job.progress || 0);
+        setJobStatus(data);
+        setProgressStage(data.status === 'dubbing' ? 'Processing dubbing...' : 'Ready');
+        setProgressPercent(data.status === 'dubbing' ? 50 : 100);
 
-          if (data.job.status === 'completed') {
-            // Stop polling
-            if (pollInterval.current) {
-              clearInterval(pollInterval.current);
-            }
+        if (data.status === 'dubbed') {
+          // Stop polling
+          if (pollInterval.current) {
+            clearInterval(pollInterval.current);
+          }
 
-            // Fetch transcripts
-            await loadTranscripts(id);
+          // Fetch transcripts
+          await loadTranscripts(id);
 
-            setScreen('transcript');
-          } else if (data.job.status === 'failed') {
-            if (pollInterval.current) {
-              clearInterval(pollInterval.current);
+          setScreen('transcript');
+        } else if (data.status === 'failed') {
+          if (pollInterval.current) {
+            clearInterval(pollInterval.current);
             }
             setError(data.job.error || 'Job failed');
           }
@@ -181,15 +202,23 @@ export default function Home() {
 
   const loadTranscripts = async (id: string) => {
     try {
-      // Load source transcript
-      const sourceResp = await fetch(`/api/jobs/${id}/transcript?language=auto`);
+      // Load source transcript (English)
+      const sourceResp = await fetch('/api/dubbing/transcript', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dubbingId: id, languageCode: 'en', format: 'json' })
+      });
       if (sourceResp.ok) {
         const sourceData = await sourceResp.json();
         setSourceTranscript(sourceData.transcript);
       }
 
       // Load target transcript
-      const targetResp = await fetch(`/api/jobs/${id}/transcript?language=${targetLanguage}`);
+      const targetResp = await fetch('/api/dubbing/transcript', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dubbingId: id, languageCode: targetLanguage, format: 'json' })
+      });
       if (targetResp.ok) {
         const targetData = await targetResp.json();
         setTargetTranscript(targetData.transcript);
