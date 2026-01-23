@@ -1,6 +1,6 @@
 import { Worker, Job } from 'bullmq';
 import { connection, DubbingJobData, JobProgress } from './lib/queue';
-import { jobQueries, transcriptQueries, artifactQueries, parseTranscript } from './lib/db';
+import { jobQueries, transcriptQueries, artifactQueries, voiceMappingQueries, parseTranscript } from './lib/db';
 import { createHash } from 'crypto';
 import { AssemblyAI } from 'assemblyai';
 import OpenAI from 'openai';
