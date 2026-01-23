@@ -1,118 +1,226 @@
-# ScriptShift
+# ScriptShift - AI Video Dubbing Studio
 
-**Transform your videos into any language with AI-powered voice cloning and dubbing**
+**Production-ready async video dubbing pipeline replicating ElevenLabs Dubbing Studio UX**
 
-Professional video localization tool featuring:
-- **AssemblyAI** for accurate speech-to-text with speaker diarization
-- **GPT-4** for professional translation
-- **ElevenLabs Dubbing Studio** for enterprise-grade voice cloning and dubbing
-- **Beautiful modern UI** with ScriptShift branding
-- **Ready for HeyGen** lip-sync integration
+## Features
 
-## 🎯 Workflow
+✅ **Async Job Queue** (BullMQ + Redis) - Non-blocking processing with real-time progress
+✅ **Speaker Diarization** (AssemblyAI) - Automatic speaker detection with timestamps
+✅ **Professional Translation** (OpenAI GPT-4) - Contextual translation per segment
+✅ **Voice Mapping** - Assign custom ElevenLabs voices to each speaker
+✅ **Transcript Editor** - Edit translated text per segment before generation
+✅ **Background Audio Preservation** - Ducking strategy keeps SFX intact
+✅ **SHA256 Caching** - Reuse transcripts/translations for same files
+✅ **Instant Video Preview** - See uploaded video immediately
+✅ **Real-time Progress** - Live job status with pipeline stages
 
-1. **Upload Video** → Choose target language (English, Spanish, French, or Italian)
-2. **AI Transcription** → AssemblyAI transcribes with automatic speaker detection
-3. **Review English** → Edit the English transcript if needed
-4. **AI Translation** → GPT-4 translates to target language
-5. **Review Translation** → Edit the translation side-by-side with English
-6. **Professional Dubbing** → ElevenLabs Dubbing Studio:
-   - Automatically clones all speaker voices
-   - Preserves speaker characteristics and emotions
-   - Maintains perfect timing synchronization
-   - Generates professional multi-voice dubbed audio
-7. **Download** → Complete dubbed video ready for distribution!
+## Quick Start
 
-## 🎬 Key Features
+### Prerequisites
 
-### Voice Cloning
-ElevenLabs Enterprise automatically:
-- Analyzes each speaker's unique voice characteristics
-- Creates realistic voice clones for each speaker
-- Preserves emotional tone and speaking style
-- Maintains speaker differentiation (Speaker 1 sounds like Speaker 1, etc.)
+- Node.js 18+
+- Redis server (local or cloud)
+- API Keys: AssemblyAI, OpenAI, ElevenLabs
+- Vercel Blob token (for storage)
 
-### Perfect Timing
-- Matches original video pacing and duration
-- Preserves natural speech flow
-- No awkward gaps or rushing
+### Installation
 
-### Modern UI
-- **ScriptShift** branding with gradient design
-- Clean, professional interface perfect for client demos
-- Clear step-by-step workflow
-- No confusing options or toggles
+```bash
+npm install
+```
 
-## 🚀 Tech Stack
+### Environment Setup
 
-- **Next.js 14** - React framework with App Router
-- **AssemblyAI** - Professional speech-to-text with speaker diarization
-- **OpenAI GPT-4** - Translation engine
-- **ElevenLabs Dubbing Studio** - Enterprise voice cloning and dubbing
-- **FFmpeg** - Video/audio processing
-- **Vercel Blob** - File storage
-- **Tailwind CSS** - Modern styling
-- **TypeScript** - Type safety
+Copy `.env.example` to `.env.local` and fill in:
 
-## 🔧 Setup
+```bash
+# Required
+ASSEMBLYAI_API_KEY=your-key-here
+OPENAI_API_KEY=sk-your-key-here
+ELEVENLABS_API_KEY=your-key-here
+REDIS_URL=redis://localhost:6379
+BLOB_READ_WRITE_TOKEN=your-vercel-blob-token
 
-1. Clone the repository
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+# Optional
+HEYGEN_API_KEY=your-key-here  # For lip-sync (not yet enabled)
+DATABASE_PATH=./data/scriptshift.db
+```
 
-3. Configure environment variables (`.env`):
-   ```bash
-   ASSEMBLYAI_API_KEY=your-assemblyai-key
-   OPENAI_API_KEY=your-openai-key
-   ELEVENLABS_API_KEY=your-elevenlabs-key
-   BLOB_READ_WRITE_TOKEN=your-vercel-blob-token
-   ```
+### Run Development
 
-4. Run development server:
-   ```bash
-   npm run dev
-   ```
+**Terminal 1 - Start Redis:**
+```bash
+redis-server
+```
 
-5. Open [http://localhost:3000](http://localhost:3000)
+**Terminal 2 - Start Worker:**
+```bash
+npm run worker
+```
 
-## 📁 Project Structure
+**Terminal 3 - Start Web Server:**
+```bash
+npm run dev
+```
+
+Open http://localhost:3000
+
+## Workflow
+
+1. **Upload** → Select video + target language → Instant preview
+2. **Processing** (async) → Extract audio → Transcribe → Translate → Store in DB
+3. **Transcript Editor** → Review/edit segments + Assign voices per speaker
+4. **Generate** → TTS per segment → Mix with ducking → Export MP4
+5. **Download** → Preview + download final video
+
+## Architecture
+
+### Tech Stack
+
+- **Frontend:** Next.js 14, React, Tailwind CSS
+- **Queue:** BullMQ + Redis (async processing)
+- **Database:** SQLite (better-sqlite3)
+- **Storage:** Vercel Blob
+- **Media:** FFmpeg
+- **APIs:** AssemblyAI, OpenAI, ElevenLabs
+
+### Pipeline Stages
+
+```
+upload → extract_audio → transcribe_diarize → translate →
+[USER EDITS] → tts_generate → mix_ducking → export_mp4
+```
+
+### Caching Strategy
+
+- **File hash:** SHA256 of uploaded video
+- **Transcripts:** Cached by `file_hash + language`
+- **Artifacts:** Audio files, stems cached by hash
+- **Re-uploads:** Same file = instant results
+
+## Project Structure
 
 ```
 /app
   /api
-    /transcribe         - AssemblyAI transcription with speaker diarization
-    /translate-preview  - GPT-4 translation preview
-    /translate-and-dub  - ElevenLabs Dubbing Studio integration
-    /upload            - Vercel Blob file upload
-  page.tsx             - Main UI with ScriptShift branding
+    /jobs
+      /upload               - SHA256 hash + Vercel Blob upload
+      /[id]/status          - Job progress polling
+      /[id]/transcript      - GET/POST transcript editing
+      /[id]/voices          - Voice mapping per speaker
+    /elevenlabs/voices      - List available voices
+  page.tsx                  - Main UI (4 screens)
 
 /lib
+  db.ts                     - SQLite schema + queries
+  queue.ts                  - BullMQ setup
   /services
-    elevenlabs-dubbing.ts - ElevenLabs Dubbing Studio service
+    elevenlabs-dubbing.ts   - Voice API integration
+
+worker.ts                   - Background job processor
 ```
 
-## 🎨 UI Design
+## Database Schema
 
-Modern, professional design inspired by enterprise design systems:
-- **Gradient backgrounds** (blue → purple → pink)
-- **Rounded corners** for modern aesthetic
-- **Smooth animations** and hover effects
-- **Clear visual hierarchy** with emojis and icons
-- **Responsive** layout
+### `jobs`
+Tracks dubbing jobs with status, progress, errors
 
-## 🔮 Coming Soon
+### `transcripts`
+Stores speaker-diarized transcripts (original + translated)
 
-- **HeyGen Integration** - AI lip-sync for perfect mouth movements
-- **More Languages** - Expand to support 20+ languages
-- **Batch Processing** - Process multiple videos at once
-- **Advanced Editing** - Fine-tune dubbing in the browser
+### `voice_mappings`
+Maps speakers to ElevenLabs voice IDs
 
-## 📝 License
+### `artifacts`
+URLs to generated files (audio, video, stems)
 
-Private - All rights reserved
+### `cache`
+General key-value cache with TTL
 
----
+## API Routes
 
-Built with ❤️ by the ScriptShift team
+### POST `/api/jobs/upload`
+Upload video, compute hash, create job, add to queue
+
+### GET `/api/jobs/[id]/status`
+Real-time job status + progress + artifacts
+
+### GET `/api/jobs/[id]/transcript?language=es`
+Fetch transcript for job
+
+### POST `/api/jobs/[id]/transcript`
+Update edited transcript segments
+
+### POST `/api/jobs/[id]/voices`
+Map speaker to ElevenLabs voice
+
+### GET `/api/elevenlabs/voices`
+List available ElevenLabs voices
+
+## Audio Strategy
+
+**Current Implementation:** Volume ducking (fallback)
+- Original audio at 25% volume during speech
+- Dubbed audio overlaid at full volume
+- Preserves background music/SFX
+
+**Future:** Source separation with Demucs/UVR (experimental)
+
+## Production Deployment
+
+### Vercel (Web + API)
+
+1. Set environment variables in Vercel dashboard
+2. Add Redis Cloud/Upstash integration
+3. Deploy: `vercel --prod`
+
+### Worker (Railway/Render/Heroku)
+
+Deploy worker separately:
+
+```dockerfile
+FROM node:18
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --production
+COPY . .
+CMD ["npm", "run", "worker"]
+```
+
+Set same environment variables as web app.
+
+## Troubleshooting
+
+**Worker not processing:**
+- Check Redis connection
+- Verify worker is running (`npm run worker`)
+- Check logs for errors
+
+**Timeout errors:**
+- Increase API timeouts in worker.ts
+- Check AssemblyAI/OpenAI/ElevenLabs status
+- Verify Redis connection
+
+**File size limits:**
+- Default: 50MB
+- Adjust in upload route if needed
+
+## Development Notes
+
+- Worker runs separately for scalability
+- Can run multiple workers in parallel
+- Automatic retries on failure
+- Temp files auto-cleanup
+- SQLite for simplicity (migrate to Postgres for production scale)
+
+## Coming Soon
+
+- [ ] HeyGen lip-sync integration
+- [ ] Demucs audio separation
+- [ ] Job history UI
+- [ ] Batch processing
+- [ ] More languages (20+)
+
+## License
+
+MIT
