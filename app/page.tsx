@@ -183,44 +183,61 @@ export default function Home() {
             clearInterval(pollInterval.current);
           }
 
-          console.log('[Polling] Dubbing complete! Downloading video...');
+          console.log('[Polling] Dubbing complete! Fetching transcripts and video...');
 
-          // Skip transcript screen - go straight to download
+          // Fetch transcripts AND download video
           try {
-            setProgressStage('Downloading dubbed video...');
+            setProgressStage('Loading transcripts and video...');
 
-            const downloadResponse = await fetch('/api/dubbing/download', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                dubbingId: id,
-                targetLanguage,
-                videoUrl
+            // Load both transcripts in parallel
+            const [sourceResp, targetResp, downloadResp] = await Promise.all([
+              fetch('/api/dubbing/transcript', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dubbingId: id, languageCode: 'en', format: 'json' })
+              }),
+              fetch('/api/dubbing/transcript', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dubbingId: id, languageCode: targetLanguage, format: 'json' })
+              }),
+              fetch('/api/dubbing/download', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dubbingId: id, targetLanguage, videoUrl })
               })
-            });
+            ]);
 
-            if (!downloadResponse.ok) {
-              throw new Error('Failed to download dubbed video');
+            // Process transcripts
+            if (sourceResp.ok) {
+              const sourceData = await sourceResp.json();
+              setSourceTranscript(sourceData.transcript);
             }
 
-            const downloadData = await downloadResponse.json();
-
-            // Convert base64 to blob URL for download
-            const videoData = downloadData.videoData;
-            const byteCharacters = atob(videoData);
-            const byteNumbers = new Array(byteCharacters.length);
-            for (let i = 0; i < byteCharacters.length; i++) {
-              byteNumbers[i] = byteCharacters.charCodeAt(i);
+            if (targetResp.ok) {
+              const targetData = await targetResp.json();
+              setTargetTranscript(targetData.transcript);
             }
-            const byteArray = new Uint8Array(byteNumbers);
-            const blob = new Blob([byteArray], { type: 'video/mp4' });
-            const url = URL.createObjectURL(blob);
 
-            setOutputVideoUrl(url);
+            // Process video
+            if (downloadResp.ok) {
+              const downloadData = await downloadResp.json();
+              const videoData = downloadData.videoData;
+              const byteCharacters = atob(videoData);
+              const byteNumbers = new Array(byteCharacters.length);
+              for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+              }
+              const byteArray = new Uint8Array(byteNumbers);
+              const blob = new Blob([byteArray], { type: 'video/mp4' });
+              const url = URL.createObjectURL(blob);
+              setOutputVideoUrl(url);
+            }
+
             setScreen('output');
           } catch (err) {
-            console.error('Download error:', err);
-            setError(err instanceof Error ? err.message : 'Failed to download video');
+            console.error('Loading error:', err);
+            setError(err instanceof Error ? err.message : 'Failed to load results');
           }
         } else if (data.status === 'failed') {
           if (pollInterval.current) {
@@ -550,23 +567,47 @@ export default function Home() {
 
         {/* Output Screen */}
         {screen === 'output' && (
-          <div className="bg-white rounded-3xl shadow-xl p-8 max-w-4xl mx-auto">
+          <div className="bg-white rounded-3xl shadow-xl p-8 max-w-7xl mx-auto">
             <h2 className="text-3xl font-bold text-green-600 mb-6">✓ Dubbing Complete!</h2>
 
-            {outputVideoUrl && (
-              <div className="mb-6">
-                <video
-                  src={outputVideoUrl}
-                  controls
-                  className="w-full rounded-lg shadow-lg"
-                />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+              {/* Dubbed Video */}
+              {outputVideoUrl && (
+                <div>
+                  <h3 className="text-lg font-bold mb-2">Dubbed Video</h3>
+                  <video
+                    src={outputVideoUrl}
+                    controls
+                    className="w-full rounded-lg shadow-lg"
+                  />
+                </div>
+              )}
+
+              {/* Transcripts */}
+              <div className="space-y-4">
+                {sourceTranscript && (
+                  <div>
+                    <h3 className="text-lg font-bold mb-2">Original (English)</h3>
+                    <div className="bg-gray-100 p-4 rounded-lg h-64 overflow-y-auto text-sm">
+                      <pre className="whitespace-pre-wrap">{JSON.stringify(sourceTranscript, null, 2)}</pre>
+                    </div>
+                  </div>
+                )}
+                {targetTranscript && (
+                  <div>
+                    <h3 className="text-lg font-bold mb-2">Translated ({targetLanguage.toUpperCase()})</h3>
+                    <div className="bg-blue-50 p-4 rounded-lg h-64 overflow-y-auto text-sm">
+                      <pre className="whitespace-pre-wrap">{JSON.stringify(targetTranscript, null, 2)}</pre>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
 
             <div className="flex gap-4">
               <a
                 href={outputVideoUrl}
-                download
+                download="dubbed-video.mp4"
                 className="flex-1 text-center bg-green-600 text-white py-4 rounded-2xl font-bold hover:bg-green-700 transition"
               >
                 📥 Download Video
