@@ -183,10 +183,45 @@ export default function Home() {
             clearInterval(pollInterval.current);
           }
 
-          // Fetch transcripts
-          await loadTranscripts(id);
+          console.log('[Polling] Dubbing complete! Downloading video...');
 
-          setScreen('transcript');
+          // Skip transcript screen - go straight to download
+          try {
+            setProgressStage('Downloading dubbed video...');
+
+            const downloadResponse = await fetch('/api/dubbing/download', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                dubbingId: id,
+                targetLanguage,
+                videoUrl
+              })
+            });
+
+            if (!downloadResponse.ok) {
+              throw new Error('Failed to download dubbed video');
+            }
+
+            const downloadData = await downloadResponse.json();
+
+            // Convert base64 to blob URL for download
+            const videoData = downloadData.videoData;
+            const byteCharacters = atob(videoData);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: 'video/mp4' });
+            const url = URL.createObjectURL(blob);
+
+            setOutputVideoUrl(url);
+            setScreen('output');
+          } catch (err) {
+            console.error('Download error:', err);
+            setError(err instanceof Error ? err.message : 'Failed to download video');
+          }
         } else if (data.status === 'failed') {
           if (pollInterval.current) {
             clearInterval(pollInterval.current);
