@@ -4,6 +4,12 @@ export interface DubbingJob {
   status: 'pending' | 'preparing' | 'dubbing' | 'dubbed' | 'failed';
   target_languages: string[];
   source_language?: string;
+  // Additional fields that might be returned by ElevenLabs API
+  error?: string;
+  expected_duration_sec?: number;
+  progress?: number;
+  time_remaining_sec?: number;
+  [key: string]: any; // Capture any other fields
 }
 
 export interface DubbingResult {
