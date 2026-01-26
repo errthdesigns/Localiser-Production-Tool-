@@ -5,6 +5,11 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
+  // Declare variables outside try block so they're accessible in catch
+  let dubbingId: string | undefined;
+  let languageCode: string | undefined;
+  let format: string | undefined;
+
   try {
     const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
 
@@ -16,7 +21,9 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { dubbingId, languageCode, format } = body;
+    dubbingId = body.dubbingId;
+    languageCode = body.languageCode;
+    format = body.format;
 
     if (!dubbingId || !languageCode) {
       return NextResponse.json(
@@ -25,13 +32,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`Fetching transcript for dubbing ${dubbingId}, language: ${languageCode}, format: ${format || 'json'}`);
+    console.log(`[Transcript API] Fetching transcript for dubbing ${dubbingId}, language: ${languageCode}, format: ${format || 'json'}`);
 
     const dubbingService = new ElevenLabsDubbingService(elevenLabsApiKey);
 
     let transcript;
     if (format === 'srt') {
       transcript = await dubbingService.getTranscriptSRT(dubbingId, languageCode);
+      console.log(`[Transcript API] ✓ SRT transcript fetched successfully`);
       return NextResponse.json({
         success: true,
         transcript: transcript,
@@ -40,6 +48,7 @@ export async function POST(request: NextRequest) {
     } else {
       // Default to JSON format
       transcript = await dubbingService.getTranscript(dubbingId, languageCode);
+      console.log(`[Transcript API] ✓ JSON transcript fetched successfully`);
       return NextResponse.json({
         success: true,
         transcript: transcript,
@@ -48,12 +57,20 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error) {
-    console.error('Error fetching transcript:', error);
+    console.error('[Transcript API] ✗ Error fetching transcript:', error);
+    console.error('[Transcript API] Error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      dubbingId,
+      languageCode,
+      format: format || 'json'
+    });
 
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : 'Failed to fetch transcript',
-        details: error instanceof Error ? error.stack : undefined
+        details: error instanceof Error ? error.stack : undefined,
+        dubbingId,
+        languageCode
       },
       { status: 500 }
     );
