@@ -176,8 +176,35 @@ export default function Home() {
         console.log('[Polling] Status response:', data); // DEBUG
 
         setJobStatus(data);
-        setProgressStage(data.status === 'dubbing' ? 'Processing dubbing...' : `Ready (${data.status})`);
-        setProgressPercent(data.status === 'dubbing' ? 50 : 100);
+
+        // Update progress based on actual status
+        let stage = '';
+        let percent = 0;
+
+        switch (data.status) {
+          case 'pending':
+            stage = 'Starting dubbing job...';
+            percent = 10;
+            break;
+          case 'preparing':
+            stage = 'Preparing audio and video...';
+            percent = 30;
+            break;
+          case 'dubbing':
+            stage = 'Dubbing in progress...';
+            percent = 60;
+            break;
+          case 'dubbed':
+            stage = 'Complete!';
+            percent = 100;
+            break;
+          default:
+            stage = `Processing (${data.status})`;
+            percent = 50;
+        }
+
+        setProgressStage(stage);
+        setProgressPercent(percent);
 
         if (data.status === 'dubbed' || data.ready === true) {
           // Stop polling
