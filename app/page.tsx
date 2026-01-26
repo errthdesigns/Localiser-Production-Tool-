@@ -42,6 +42,7 @@ export default function Home() {
   const [dubbingId, setDubbingId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>('');
+  const [transcriptsFetched, setTranscriptsFetched] = useState(false);
 
   // Transcript data
   const [sourceTranscript, setSourceTranscript] = useState<Transcript | null>(null);
@@ -212,6 +213,43 @@ export default function Home() {
           setError(`Dubbing failed: ${data.error || 'Unknown error'}. Please try again.`);
           setScreen('upload');
           return;
+        }
+
+        // Fetch transcripts when dubbing starts (like ElevenLabs Studio)
+        if (data.status === 'dubbing' && !transcriptsFetched) {
+          console.log('[Polling] Dubbing started! Fetching transcripts...');
+          setTranscriptsFetched(true);
+
+          // Fetch transcripts in background while dubbing continues
+          try {
+            const [sourceResp, targetResp] = await Promise.all([
+              fetch('/api/dubbing/transcript', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dubbingId: id, languageCode: 'en', format: 'json' })
+              }),
+              fetch('/api/dubbing/transcript', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dubbingId: id, languageCode: targetLanguage, format: 'json' })
+              })
+            ]);
+
+            if (sourceResp.ok) {
+              const sourceData = await sourceResp.json();
+              setSourceTranscript(sourceData.transcript);
+            }
+
+            if (targetResp.ok) {
+              const targetData = await targetResp.json();
+              setTargetTranscript(targetData.transcript);
+            }
+
+            // Show transcript screen while dubbing continues
+            setScreen('transcript');
+          } catch (err) {
+            console.error('Failed to fetch transcripts:', err);
+          }
         }
 
         if (data.status === 'dubbed' || data.ready === true) {
