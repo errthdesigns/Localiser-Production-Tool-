@@ -42,7 +42,6 @@ export default function Home() {
   const [dubbingId, setDubbingId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>('');
-  const transcriptsFetchedRef = useRef<boolean>(false);
 
   // Transcript data
   const [sourceTranscript, setSourceTranscript] = useState<Transcript | null>(null);
@@ -109,7 +108,6 @@ export default function Home() {
 
     setIsLoading(true);
     setError('');
-    transcriptsFetchedRef.current = false; // Reset for new upload
 
     try {
       // Send video DIRECTLY to ElevenLabs (no Blob storage - faster!)
@@ -214,48 +212,6 @@ export default function Home() {
           setError(`Dubbing failed: ${data.error || 'Unknown error'}. Please try again.`);
           setScreen('upload');
           return;
-        }
-
-        // Fetch transcripts when dubbing starts (like ElevenLabs Studio)
-        if (data.status === 'dubbing' && !transcriptsFetchedRef.current) {
-          console.log('[Polling] Dubbing started! Fetching transcripts...');
-          transcriptsFetchedRef.current = true; // Use ref for immediate update
-
-          // Fetch transcripts in background while dubbing continues
-          try {
-            const [sourceResp, targetResp] = await Promise.all([
-              fetch('/api/dubbing/transcript', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ dubbingId: id, languageCode: 'en', format: 'json' })
-              }),
-              fetch('/api/dubbing/transcript', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ dubbingId: id, languageCode: targetLanguage, format: 'json' })
-              })
-            ]);
-
-            // Only process if both requests succeeded
-            if (sourceResp.ok && targetResp.ok) {
-              const sourceData = await sourceResp.json();
-              const targetData = await targetResp.json();
-
-              setSourceTranscript(sourceData.transcript);
-              setTargetTranscript(targetData.transcript);
-
-              console.log('[Polling] ✓ Transcripts fetched successfully! Showing transcript screen...');
-              // Show transcript screen while dubbing continues
-              setScreen('transcript');
-            } else {
-              // Transcripts not ready yet - they'll be available when status becomes 'dubbed'
-              console.log('[Polling] Transcripts not ready yet, will fetch when dubbing completes...');
-              transcriptsFetchedRef.current = false; // Reset so we can try again
-            }
-          } catch (err) {
-            console.error('[Polling] Failed to fetch transcripts:', err);
-            transcriptsFetchedRef.current = false; // Reset so we can try again
-          }
         }
 
         if (data.status === 'dubbed' || data.ready === true) {
