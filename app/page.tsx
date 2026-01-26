@@ -155,8 +155,19 @@ export default function Home() {
       clearInterval(pollInterval.current);
     }
 
+    const startTime = Date.now();
+    const TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+
     pollInterval.current = setInterval(async () => {
       try {
+        // Check for timeout
+        if (Date.now() - startTime > TIMEOUT_MS) {
+          clearInterval(pollInterval.current!);
+          setError('Dubbing timed out after 10 minutes. Please try again with a shorter video.');
+          setScreen('upload');
+          return;
+        }
+
         const response = await fetch(`/api/dubbing/status?dubbingId=${id}`);
         const data = await response.json();
 
@@ -192,6 +203,16 @@ export default function Home() {
 
         setProgressStage(stage);
         setProgressPercent(percent);
+
+        // Check for failed status
+        if (data.status === 'failed') {
+          if (pollInterval.current) {
+            clearInterval(pollInterval.current);
+          }
+          setError(`Dubbing failed: ${data.error || 'Unknown error'}. Please try again.`);
+          setScreen('upload');
+          return;
+        }
 
         if (data.status === 'dubbed' || data.ready === true) {
           // Stop polling
