@@ -110,36 +110,18 @@ export default function Home() {
     setError('');
 
     try {
-      // Step 1: Upload video to Vercel Blob
-      setProgressStage('Uploading video...');
-      const uploadFormData = new FormData();
-      uploadFormData.append('file', videoFile);
+      // Send video DIRECTLY to ElevenLabs (no Blob storage - faster!)
+      setProgressStage('Starting dubbing...');
 
-      const uploadResponse = await fetch('/api/upload', {
-        method: 'POST',
-        body: uploadFormData
-      });
+      const formData = new FormData();
+      formData.append('file', videoFile);
+      formData.append('targetLanguage', targetLanguage);
+      formData.append('sourceLanguage', 'auto');
+      formData.append('dropBackgroundAudio', 'false');
 
-      if (!uploadResponse.ok) {
-        throw new Error('Video upload failed');
-      }
-
-      const uploadData = await uploadResponse.json();
-      const blobUrl = uploadData.url;
-      setVideoUrl(blobUrl);
-
-      // Step 2: Create ElevenLabs dubbing job
-      setProgressStage('Creating dubbing job...');
       const dubbingResponse = await fetch('/api/dubbing/create', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          videoUrl: blobUrl,
-          targetLanguage,
-          sourceLanguage: 'auto',
-          dropBackgroundAudio: false, // Keep background audio
-          dubbingStudio: true // Enable transcript editing
-        })
+        body: formData
       });
 
       if (!dubbingResponse.ok) {
@@ -149,6 +131,11 @@ export default function Home() {
 
       const dubbingData = await dubbingResponse.json();
       setDubbingId(dubbingData.dubbingId);
+
+      // Store video URL from response (if provided)
+      if (dubbingData.videoUrl) {
+        setVideoUrl(dubbingData.videoUrl);
+      }
 
       // Start polling for dubbing status
       startPolling(dubbingData.dubbingId);

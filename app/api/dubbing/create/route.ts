@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ElevenLabsDubbingService } from '@/lib/services/elevenlabs-dubbing';
+import { put } from '@vercel/blob';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,41 +25,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
-    const {
-      videoUrl,
-      targetLanguage,
-      sourceLanguage,
-      disableVoiceCloning,
-      dropBackgroundAudio,
-    } = body;
+    // Accept FormData directly (faster - no Blob storage)
+    const formData = await request.formData();
+    const videoFile = formData.get('file') as File;
+    const targetLanguage = formData.get('targetLanguage') as string;
+    const sourceLanguage = formData.get('sourceLanguage') as string;
+    const disableVoiceCloning = formData.get('disableVoiceCloning') === 'true';
+    const dropBackgroundAudio = formData.get('dropBackgroundAudio') === 'true';
 
-    if (!videoUrl || !targetLanguage) {
+    if (!videoFile || !targetLanguage) {
       return NextResponse.json(
-        { error: 'Video URL and target language are required' },
+        { error: 'Video file and target language are required' },
         { status: 400 }
       );
     }
 
     console.log('Target language:', targetLanguage);
     console.log('Source language:', sourceLanguage || 'auto-detect');
-    console.log('Video URL:', videoUrl);
+    console.log('Video file:', videoFile.name, 'size:', (videoFile.size / 1024 / 1024).toFixed(2), 'MB');
     console.log('Voice cloning:', disableVoiceCloning ? 'DISABLED (using Voice Library)' : 'ENABLED');
     console.log('Background audio:', dropBackgroundAudio ? 'REMOVED' : 'PRESERVED');
-
-    // Download original video
-    console.log('Downloading original video...');
-    const videoResponse = await fetch(videoUrl);
-    if (!videoResponse.ok) {
-      throw new Error('Failed to download video from URL');
-    }
-    const videoBuffer = await videoResponse.arrayBuffer();
-    console.log('Video downloaded:', videoBuffer.byteLength, 'bytes');
-
-    // Convert to File object for ElevenLabs
-    const videoBlob = new Blob([videoBuffer], { type: 'video/mp4' });
-    const fileName = videoUrl.split('/').pop() || 'video.mp4';
-    const videoFile = new File([videoBlob], fileName, { type: 'video/mp4' });
 
     // Create dubbing job with Dubbing Studio mode
     console.log('Submitting to ElevenLabs Dubbing Studio...');
@@ -79,6 +65,14 @@ export async function POST(request: NextRequest) {
     console.log('Dubbing job created:', job.dubbing_id);
     console.log('Status:', job.status);
 
+    // Also upload to Blob storage for later download (in background)
+    console.log('Uploading video to Blob storage...');
+    const blob = await put(videoFile.name, videoFile, {
+      access: 'public',
+      addRandomSuffix: true
+    });
+    console.log('Video uploaded to Blob:', blob.url);
+
     const duration = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(`=== Dubbing Job Created in ${duration}s ===`);
 
@@ -88,6 +82,7 @@ export async function POST(request: NextRequest) {
       status: job.status,
       targetLanguage: targetLanguage,
       sourceLanguage: sourceLanguage || job.source_language,
+      videoUrl: blob.url, // Return for later download
       processingTime: duration,
       message: 'Dubbing job created successfully. Use dubbing ID to fetch transcripts and translations.',
     });
