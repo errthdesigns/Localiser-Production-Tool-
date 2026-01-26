@@ -136,10 +136,14 @@ export class ElevenLabsDubbingService {
     try {
       console.log(`[ElevenLabs API] Fetching status for dubbing ID: ${dubbingId}`);
 
-      const response = await fetch(`${this.baseUrl}/dubbing/${dubbingId}`, {
+      // Add cache-busting timestamp to prevent stale responses
+      const timestamp = Date.now();
+      const response = await fetch(`${this.baseUrl}/dubbing/${dubbingId}?_=${timestamp}`, {
         method: 'GET',
         headers: {
           'xi-api-key': this.apiKey,
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
         },
       });
 
@@ -150,7 +154,7 @@ export class ElevenLabsDubbingService {
       }
 
       const result = await response.json() as DubbingJob;
-      console.log(`[ElevenLabs API] Raw status response:`, result);
+      console.log(`[ElevenLabs API] Raw status response:`, JSON.stringify(result, null, 2));
 
       return result;
     } catch (error) {
