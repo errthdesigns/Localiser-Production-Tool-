@@ -1,9 +1,15 @@
 export interface DubbingJob {
   dubbing_id: string;
   name: string;
-  status: 'dubbing' | 'dubbed' | 'failed';
+  status: 'pending' | 'preparing' | 'dubbing' | 'dubbed' | 'failed';
   target_languages: string[];
   source_language?: string;
+  // Additional fields that might be returned by ElevenLabs API
+  error?: string;
+  expected_duration_sec?: number;
+  progress?: number;
+  time_remaining_sec?: number;
+  [key: string]: any; // Capture any other fields
 }
 
 export interface DubbingResult {
@@ -128,6 +134,8 @@ export class ElevenLabsDubbingService {
    */
   async getDubbingStatus(dubbingId: string): Promise<DubbingJob> {
     try {
+      console.log(`[ElevenLabs API] Fetching status for dubbing ID: ${dubbingId}`);
+
       const response = await fetch(`${this.baseUrl}/dubbing/${dubbingId}`, {
         method: 'GET',
         headers: {
@@ -137,12 +145,16 @@ export class ElevenLabsDubbingService {
 
       if (!response.ok) {
         const error = await response.json();
+        console.error(`[ElevenLabs API] Status check failed:`, error);
         throw new Error(`Failed to get dubbing status: ${JSON.stringify(error)}`);
       }
 
-      return await response.json() as DubbingJob;
+      const result = await response.json() as DubbingJob;
+      console.log(`[ElevenLabs API] Raw status response:`, result);
+
+      return result;
     } catch (error) {
-      console.error('Failed to get dubbing status:', error);
+      console.error('[ElevenLabs API] Failed to get dubbing status:', error);
       throw error;
     }
   }

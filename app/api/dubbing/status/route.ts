@@ -28,12 +28,18 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.log(`Checking status for dubbing job: ${dubbingId}`);
+    console.log(`[Status API] Checking status for dubbing job: ${dubbingId}`);
 
     const dubbingService = new ElevenLabsDubbingService(elevenLabsApiKey);
     const status = await dubbingService.getDubbingStatus(dubbingId);
 
-    console.log(`Dubbing status: ${status.status}`);
+    console.log(`[Status API] Dubbing status response:`, {
+      dubbing_id: status.dubbing_id,
+      status: status.status,
+      name: status.name,
+      target_languages: status.target_languages,
+      source_language: status.source_language
+    });
 
     return NextResponse.json({
       success: true,
