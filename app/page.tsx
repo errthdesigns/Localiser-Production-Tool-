@@ -42,7 +42,7 @@ export default function Home() {
   const [dubbingId, setDubbingId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>('');
-  const [transcriptsFetched, setTranscriptsFetched] = useState(false);
+  const transcriptsFetchedRef = useRef<boolean>(false);
 
   // Transcript data
   const [sourceTranscript, setSourceTranscript] = useState<Transcript | null>(null);
@@ -109,6 +109,7 @@ export default function Home() {
 
     setIsLoading(true);
     setError('');
+    transcriptsFetchedRef.current = false; // Reset for new upload
 
     try {
       // Send video DIRECTLY to ElevenLabs (no Blob storage - faster!)
@@ -216,9 +217,9 @@ export default function Home() {
         }
 
         // Fetch transcripts when dubbing starts (like ElevenLabs Studio)
-        if (data.status === 'dubbing' && !transcriptsFetched) {
+        if (data.status === 'dubbing' && !transcriptsFetchedRef.current) {
           console.log('[Polling] Dubbing started! Fetching transcripts...');
-          setTranscriptsFetched(true);
+          transcriptsFetchedRef.current = true; // Use ref for immediate update
 
           // Fetch transcripts in background while dubbing continues
           try {
@@ -235,20 +236,25 @@ export default function Home() {
               })
             ]);
 
-            if (sourceResp.ok) {
+            // Only process if both requests succeeded
+            if (sourceResp.ok && targetResp.ok) {
               const sourceData = await sourceResp.json();
-              setSourceTranscript(sourceData.transcript);
-            }
-
-            if (targetResp.ok) {
               const targetData = await targetResp.json();
-              setTargetTranscript(targetData.transcript);
-            }
 
-            // Show transcript screen while dubbing continues
-            setScreen('transcript');
+              setSourceTranscript(sourceData.transcript);
+              setTargetTranscript(targetData.transcript);
+
+              console.log('[Polling] ✓ Transcripts fetched successfully! Showing transcript screen...');
+              // Show transcript screen while dubbing continues
+              setScreen('transcript');
+            } else {
+              // Transcripts not ready yet - they'll be available when status becomes 'dubbed'
+              console.log('[Polling] Transcripts not ready yet, will fetch when dubbing completes...');
+              transcriptsFetchedRef.current = false; // Reset so we can try again
+            }
           } catch (err) {
-            console.error('Failed to fetch transcripts:', err);
+            console.error('[Polling] Failed to fetch transcripts:', err);
+            transcriptsFetchedRef.current = false; // Reset so we can try again
           }
         }
 
