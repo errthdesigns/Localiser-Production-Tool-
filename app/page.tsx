@@ -173,11 +173,13 @@ export default function Home() {
         const response = await fetch(`/api/dubbing/status?dubbingId=${id}`);
         const data = await response.json();
 
+        console.log('[Polling] Status response:', data); // DEBUG
+
         setJobStatus(data);
-        setProgressStage(data.status === 'dubbing' ? 'Processing dubbing...' : 'Ready');
+        setProgressStage(data.status === 'dubbing' ? 'Processing dubbing...' : `Ready (${data.status})`);
         setProgressPercent(data.status === 'dubbing' ? 50 : 100);
 
-        if (data.status === 'dubbed') {
+        if (data.status === 'dubbed' || data.ready === true) {
           // Stop polling
           if (pollInterval.current) {
             clearInterval(pollInterval.current);
