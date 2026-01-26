@@ -5,6 +5,11 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
+  // Declare variables outside try block so they're accessible in catch
+  let dubbingId: string | undefined;
+  let languageCode: string | undefined;
+  let format: string | undefined;
+
   try {
     const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
 
@@ -16,7 +21,9 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { dubbingId, languageCode, format } = body;
+    dubbingId = body.dubbingId;
+    languageCode = body.languageCode;
+    format = body.format;
 
     if (!dubbingId || !languageCode) {
       return NextResponse.json(
