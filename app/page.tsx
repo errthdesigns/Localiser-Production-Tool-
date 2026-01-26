@@ -39,7 +39,7 @@ export default function Home() {
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoUrl, setVideoUrl] = useState<string>('');
   const [targetLanguage, setTargetLanguage] = useState('es');
-  const [jobId, setJobId] = useState<string>('');
+  const [dubbingId, setDubbingId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>('');
 
@@ -110,26 +110,35 @@ export default function Home() {
     setError('');
 
     try {
+      // Send video DIRECTLY to ElevenLabs (no Blob storage - faster!)
+      setProgressStage('Starting dubbing...');
+
       const formData = new FormData();
       formData.append('file', videoFile);
       formData.append('targetLanguage', targetLanguage);
+      formData.append('sourceLanguage', 'auto');
+      formData.append('dropBackgroundAudio', 'false');
 
-      const response = await fetch('/api/jobs/upload', {
+      const dubbingResponse = await fetch('/api/dubbing/create', {
         method: 'POST',
         body: formData
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Upload failed');
+      if (!dubbingResponse.ok) {
+        const errorData = await dubbingResponse.json();
+        throw new Error(errorData.error || 'Failed to create dubbing job');
       }
 
-      const data = await response.json();
-      setJobId(data.jobId);
-      setVideoUrl(data.fileUrl);
+      const dubbingData = await dubbingResponse.json();
+      setDubbingId(dubbingData.dubbingId);
 
-      // Start polling for job status
-      startPolling(data.jobId);
+      // Store video URL from response (if provided)
+      if (dubbingData.videoUrl) {
+        setVideoUrl(dubbingData.videoUrl);
+      }
+
+      // Start polling for dubbing status
+      startPolling(dubbingData.dubbingId);
 
       setScreen('progress');
 
@@ -148,30 +157,109 @@ export default function Home() {
 
     pollInterval.current = setInterval(async () => {
       try {
-        const response = await fetch(`/api/jobs/${id}/status`);
+        const response = await fetch(`/api/dubbing/status?dubbingId=${id}`);
         const data = await response.json();
 
-        if (data.job) {
-          setJobStatus(data.job);
-          setProgressStage(data.job.currentStage || '');
-          setProgressPercent(data.job.progress || 0);
+        console.log('[Polling] Status response:', data); // DEBUG
 
-          if (data.job.status === 'completed') {
-            // Stop polling
-            if (pollInterval.current) {
-              clearInterval(pollInterval.current);
-            }
+        setJobStatus(data);
 
-            // Fetch transcripts
-            await loadTranscripts(id);
+        // Update progress based on actual status
+        let stage = '';
+        let percent = 0;
 
-            setScreen('transcript');
-          } else if (data.job.status === 'failed') {
-            if (pollInterval.current) {
-              clearInterval(pollInterval.current);
-            }
-            setError(data.job.error || 'Job failed');
+        switch (data.status) {
+          case 'pending':
+            stage = 'Starting dubbing job...';
+            percent = 10;
+            break;
+          case 'preparing':
+            stage = 'Preparing audio and video...';
+            percent = 30;
+            break;
+          case 'dubbing':
+            stage = 'Dubbing in progress...';
+            percent = 60;
+            break;
+          case 'dubbed':
+            stage = 'Complete!';
+            percent = 100;
+            break;
+          default:
+            stage = `Processing (${data.status})`;
+            percent = 50;
+        }
+
+        setProgressStage(stage);
+        setProgressPercent(percent);
+
+        if (data.status === 'dubbed' || data.ready === true) {
+          // Stop polling
+          if (pollInterval.current) {
+            clearInterval(pollInterval.current);
           }
+
+          console.log('[Polling] Dubbing complete! Fetching transcripts and video...');
+
+          // Fetch transcripts AND download video
+          try {
+            setProgressStage('Loading transcripts and video...');
+
+            // Load both transcripts in parallel
+            const [sourceResp, targetResp, downloadResp] = await Promise.all([
+              fetch('/api/dubbing/transcript', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dubbingId: id, languageCode: 'en', format: 'json' })
+              }),
+              fetch('/api/dubbing/transcript', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dubbingId: id, languageCode: targetLanguage, format: 'json' })
+              }),
+              fetch('/api/dubbing/download', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dubbingId: id, targetLanguage, videoUrl })
+              })
+            ]);
+
+            // Process transcripts
+            if (sourceResp.ok) {
+              const sourceData = await sourceResp.json();
+              setSourceTranscript(sourceData.transcript);
+            }
+
+            if (targetResp.ok) {
+              const targetData = await targetResp.json();
+              setTargetTranscript(targetData.transcript);
+            }
+
+            // Process video
+            if (downloadResp.ok) {
+              const downloadData = await downloadResp.json();
+              const videoData = downloadData.videoData;
+              const byteCharacters = atob(videoData);
+              const byteNumbers = new Array(byteCharacters.length);
+              for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+              }
+              const byteArray = new Uint8Array(byteNumbers);
+              const blob = new Blob([byteArray], { type: 'video/mp4' });
+              const url = URL.createObjectURL(blob);
+              setOutputVideoUrl(url);
+            }
+
+            setScreen('output');
+          } catch (err) {
+            console.error('Loading error:', err);
+            setError(err instanceof Error ? err.message : 'Failed to load results');
+          }
+        } else if (data.status === 'failed') {
+          if (pollInterval.current) {
+            clearInterval(pollInterval.current);
+          }
+          setError('Dubbing failed');
         }
       } catch (err) {
         console.error('Polling error:', err);
@@ -181,15 +269,23 @@ export default function Home() {
 
   const loadTranscripts = async (id: string) => {
     try {
-      // Load source transcript
-      const sourceResp = await fetch(`/api/jobs/${id}/transcript?language=auto`);
+      // Load source transcript (English)
+      const sourceResp = await fetch('/api/dubbing/transcript', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dubbingId: id, languageCode: 'en', format: 'json' })
+      });
       if (sourceResp.ok) {
         const sourceData = await sourceResp.json();
         setSourceTranscript(sourceData.transcript);
       }
 
       // Load target transcript
-      const targetResp = await fetch(`/api/jobs/${id}/transcript?language=${targetLanguage}`);
+      const targetResp = await fetch('/api/dubbing/transcript', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dubbingId: id, languageCode: targetLanguage, format: 'json' })
+      });
       if (targetResp.ok) {
         const targetData = await targetResp.json();
         setTargetTranscript(targetData.transcript);
@@ -231,40 +327,42 @@ export default function Home() {
   };
 
   const saveTranscriptAndGenerate = async () => {
-    if (!jobId || !targetTranscript) return;
+    if (!dubbingId || !targetTranscript) return;
 
     setIsLoading(true);
     setError('');
 
     try {
-      // Save edited transcript
-      await fetch(`/api/jobs/${jobId}/transcript`, {
+      // Download the final dubbed video
+      const downloadResponse = await fetch('/api/dubbing/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          segments: editedSegments,
-          language: targetLanguage
+          dubbingId,
+          targetLanguage,
+          videoUrl
         })
       });
 
-      // Save voice mappings
-      for (const [speakerId, mapping] of voiceMappings.entries()) {
-        await fetch(`/api/jobs/${jobId}/voices`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            speakerId,
-            speakerName: speakerId,
-            voiceId: mapping.voiceId,
-            voiceName: mapping.voiceName
-          })
-        });
+      if (!downloadResponse.ok) {
+        throw new Error('Failed to download dubbed video');
       }
 
-      // Job will automatically continue processing from where it left off
-      // Start polling again
-      setScreen('progress');
-      startPolling(jobId);
+      const downloadData = await downloadResponse.json();
+
+      // Convert base64 to blob URL for download
+      const videoData = downloadData.videoData;
+      const byteCharacters = atob(videoData);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'video/mp4' });
+      const url = URL.createObjectURL(blob);
+
+      setOutputVideoUrl(url);
+      setScreen('output');
 
     } catch (err) {
       console.error('Generate error:', err);
@@ -485,23 +583,47 @@ export default function Home() {
 
         {/* Output Screen */}
         {screen === 'output' && (
-          <div className="bg-white rounded-3xl shadow-xl p-8 max-w-4xl mx-auto">
+          <div className="bg-white rounded-3xl shadow-xl p-8 max-w-7xl mx-auto">
             <h2 className="text-3xl font-bold text-green-600 mb-6">✓ Dubbing Complete!</h2>
 
-            {outputVideoUrl && (
-              <div className="mb-6">
-                <video
-                  src={outputVideoUrl}
-                  controls
-                  className="w-full rounded-lg shadow-lg"
-                />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+              {/* Dubbed Video */}
+              {outputVideoUrl && (
+                <div>
+                  <h3 className="text-lg font-bold mb-2">Dubbed Video</h3>
+                  <video
+                    src={outputVideoUrl}
+                    controls
+                    className="w-full rounded-lg shadow-lg"
+                  />
+                </div>
+              )}
+
+              {/* Transcripts */}
+              <div className="space-y-4">
+                {sourceTranscript && (
+                  <div>
+                    <h3 className="text-lg font-bold mb-2">Original (English)</h3>
+                    <div className="bg-gray-100 p-4 rounded-lg h-64 overflow-y-auto text-sm">
+                      <pre className="whitespace-pre-wrap">{JSON.stringify(sourceTranscript, null, 2)}</pre>
+                    </div>
+                  </div>
+                )}
+                {targetTranscript && (
+                  <div>
+                    <h3 className="text-lg font-bold mb-2">Translated ({targetLanguage.toUpperCase()})</h3>
+                    <div className="bg-blue-50 p-4 rounded-lg h-64 overflow-y-auto text-sm">
+                      <pre className="whitespace-pre-wrap">{JSON.stringify(targetTranscript, null, 2)}</pre>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
 
             <div className="flex gap-4">
               <a
                 href={outputVideoUrl}
-                download
+                download="dubbed-video.mp4"
                 className="flex-1 text-center bg-green-600 text-white py-4 rounded-2xl font-bold hover:bg-green-700 transition"
               >
                 📥 Download Video
@@ -511,7 +633,7 @@ export default function Home() {
                   setScreen('upload');
                   setVideoFile(null);
                   setVideoUrl('');
-                  setJobId('');
+                  setDubbingId('');
                 }}
                 className="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-700 transition"
               >

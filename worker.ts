@@ -1,6 +1,6 @@
 import { Worker, Job } from 'bullmq';
-import { connection, DubbingJobData, JobProgress } from './lib/queue';
-import { jobQueries, transcriptQueries, artifactQueries, parseTranscript } from './lib/db';
+import { getConnection, DubbingJobData, JobProgress } from './lib/queue';
+import { jobQueries, transcriptQueries, artifactQueries, voiceMappingQueries, parseTranscript } from './lib/db';
 import { createHash } from 'crypto';
 import { AssemblyAI } from 'assemblyai';
 import OpenAI from 'openai';
@@ -158,7 +158,7 @@ const worker = new Worker<DubbingJobData>(
     }
   },
   {
-    connection,
+    connection: getConnection(),
     concurrency: 2, // Process 2 jobs in parallel
     limiter: {
       max: 5, // Max 5 jobs per duration

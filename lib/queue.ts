@@ -1,11 +1,6 @@
 import { Queue, Worker, QueueEvents } from 'bullmq';
 import Redis from 'ioredis';
 
-// Redis connection
-const connection = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
-  maxRetriesPerRequest: null
-});
-
 // Job data interfaces
 export interface DubbingJobData {
   jobId: string;
@@ -22,30 +17,53 @@ export interface JobProgress {
   message?: string;
 }
 
-// Create queues
-export const dubbingQueue = new Queue<DubbingJobData>('dubbing', {
-  connection,
-  defaultJobOptions: {
-    attempts: 3,
-    backoff: {
-      type: 'exponential',
-      delay: 5000
-    },
-    removeOnComplete: {
-      age: 3600 * 24 * 7 // Keep completed jobs for 7 days
-    },
-    removeOnFail: {
-      age: 3600 * 24 * 7
-    }
-  }
-});
+// Lazy connection - only create when needed (not during build)
+let _connection: Redis | null = null;
+let _dubbingQueue: Queue<DubbingJobData> | null = null;
+let _dubbingQueueEvents: QueueEvents | null = null;
 
-// Queue events for progress tracking
-export const dubbingQueueEvents = new QueueEvents('dubbing', { connection });
+export function getConnection(): Redis {
+  if (!_connection) {
+    _connection = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
+      maxRetriesPerRequest: null
+    });
+  }
+  return _connection;
+}
+
+export function getDubbingQueue(): Queue<DubbingJobData> {
+  if (!_dubbingQueue) {
+    _dubbingQueue = new Queue<DubbingJobData>('dubbing', {
+      connection: getConnection(),
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 5000
+        },
+        removeOnComplete: {
+          age: 3600 * 24 * 7 // Keep completed jobs for 7 days
+        },
+        removeOnFail: {
+          age: 3600 * 24 * 7
+        }
+      }
+    });
+  }
+  return _dubbingQueue;
+}
+
+export function getDubbingQueueEvents(): QueueEvents {
+  if (!_dubbingQueueEvents) {
+    _dubbingQueueEvents = new QueueEvents('dubbing', { connection: getConnection() });
+  }
+  return _dubbingQueueEvents;
+}
 
 // Helper to add job to queue
 export async function addDubbingJob(data: DubbingJobData) {
-  const job = await dubbingQueue.add('process-dubbing', data, {
+  const queue = getDubbingQueue();
+  const job = await queue.add('process-dubbing', data, {
     jobId: data.jobId
   });
 
@@ -55,7 +73,8 @@ export async function addDubbingJob(data: DubbingJobData) {
 
 // Helper to get job status
 export async function getJobStatus(jobId: string) {
-  const job = await dubbingQueue.getJob(jobId);
+  const queue = getDubbingQueue();
+  const job = await queue.getJob(jobId);
 
   if (!job) {
     return null;
@@ -75,5 +94,3 @@ export async function getJobStatus(jobId: string) {
     failedReason: job.failedReason
   };
 }
-
-export { connection };
