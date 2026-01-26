@@ -566,6 +566,28 @@ export default function Home() {
               ></div>
             </div>
             <p className="text-sm text-gray-500">{progressPercent}% complete</p>
+
+            {/* Debug Info */}
+            {dubbingId && (
+              <div className="mt-6 p-4 bg-gray-50 rounded-lg text-left">
+                <p className="text-xs text-gray-600 mb-1">
+                  <span className="font-semibold">Dubbing ID:</span> {dubbingId}
+                </p>
+                {jobStatus && (
+                  <p className="text-xs text-gray-600 mb-2">
+                    <span className="font-semibold">Status:</span> {jobStatus.status}
+                  </p>
+                )}
+                <a
+                  href="https://elevenlabs.io/app/dubbing"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-purple-600 hover:text-purple-800 underline"
+                >
+                  View in ElevenLabs Dashboard →
+                </a>
+              </div>
+            )}
           </div>
         )}
 
